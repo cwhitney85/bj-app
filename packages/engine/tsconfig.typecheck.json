@@ -1,0 +1,10 @@
+// Typechecks tests as well as sources. `tsconfig.json` stays source-only so
+// that `tsc -p tsconfig.json` emits a clean dist without test files in it.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}
