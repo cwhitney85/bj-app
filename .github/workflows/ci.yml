@@ -6,6 +6,11 @@ on:
   push:
     branches: ['**']
   pull_request:
+  # The simulation job below keys off this. Without a schedule trigger its
+  # `github.event_name == 'schedule'` condition can never become true.
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
 
 jobs:
   engine:
@@ -22,12 +27,11 @@ jobs:
 
   simulation:
     # 10 million hands of perfect basic strategy; asserts the house edge lands
-    # in 0.35%-0.55%. Too slow for every push.
-    #
-    # NOTE: the `sim` script lands with M2 — it needs the strategy tables to have
-    # something to simulate. This job is gated off until then and will not run on
-    # a normal push.
-    if: github.event_name == 'schedule' || startsWith(github.ref, 'refs/heads/release/')
+    # in 0.35%-0.55%. Roughly three minutes, so not on every push.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
