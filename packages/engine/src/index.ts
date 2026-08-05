@@ -15,3 +15,6 @@ export * from './events.js';
 export * from './state.js';
 export * from './settle.js';
 export * from './round.js';
+export * from './knowledge.js';
+export * from './strategy.js';
+export * from './ev.js';
