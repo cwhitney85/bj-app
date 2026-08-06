@@ -49,23 +49,30 @@ export type ChartAction = 'H' | 'S' | 'D' | 'Ds' | 'P' | 'Ph';
  *   - `STAND_ON_A_MADE_HAND` — hard 18+, hard 17 vs 2-8, soft 19+, soft 18 vs
  *     7-8 and 9,9 vs 7: standing, because anything else can only make it worse.
  *   - `SPLIT_TWO_HANDS_BEAT_ONE` — every split that is not aces or eights.
+ *
+ * The list is a runtime array and the type is derived from it, the same way
+ * `RANKS` works in cards.ts: `explain.ts` owes a prose template to every code,
+ * and a union type alone can only prove that at compile time within one file.
  */
-export type ReasonCode =
-  | 'CANT_BUST_ALWAYS_HIT'
-  | 'DEALER_WEAK_LET_THEM_BUST'
-  | 'DEALER_STRONG_MUST_IMPROVE'
-  | 'SOFT_HAND_CANT_BUST'
-  | 'DOUBLE_WHEN_DEALER_LIKELY_BUSTS'
-  | 'DOUBLE_STRONG_TOTAL'
-  | 'STAND_ON_A_MADE_HAND'
-  | 'SPLIT_TWO_HANDS_BEAT_ONE'
-  | 'ALWAYS_SPLIT_ACES'
-  | 'ALWAYS_SPLIT_EIGHTS'
-  | 'NEVER_SPLIT_TENS'
-  | 'NEVER_SPLIT_FIVES'
-  | 'INSURANCE_IS_A_SUCKER_BET'
-  | 'CLOSEST_CALL'
-  | 'DAMAGE_CONTROL';
+export const REASON_CODES = [
+  'CANT_BUST_ALWAYS_HIT',
+  'DEALER_WEAK_LET_THEM_BUST',
+  'DEALER_STRONG_MUST_IMPROVE',
+  'SOFT_HAND_CANT_BUST',
+  'DOUBLE_WHEN_DEALER_LIKELY_BUSTS',
+  'DOUBLE_STRONG_TOTAL',
+  'STAND_ON_A_MADE_HAND',
+  'SPLIT_TWO_HANDS_BEAT_ONE',
+  'ALWAYS_SPLIT_ACES',
+  'ALWAYS_SPLIT_EIGHTS',
+  'NEVER_SPLIT_TENS',
+  'NEVER_SPLIT_FIVES',
+  'INSURANCE_IS_A_SUCKER_BET',
+  'CLOSEST_CALL',
+  'DAMAGE_CONTROL',
+] as const;
+
+export type ReasonCode = (typeof REASON_CODES)[number];
 
 export type ChartCell = { readonly action: ChartAction; readonly reasonCode: ReasonCode };
 
