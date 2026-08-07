@@ -19,3 +19,7 @@ export * from './knowledge.js';
 export * from './strategy.js';
 export * from './ev.js';
 export * from './explain.js';
+export * from './view.js';
+export * from './bots.js';
+export * from './play.js';
+export * from './replay.js';
