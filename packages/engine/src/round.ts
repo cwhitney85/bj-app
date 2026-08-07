@@ -274,6 +274,18 @@ export function advanceUntilDecision(state: RoundState): StepResult {
   return { state: current, events };
 }
 
+/**
+ * Begin a round. Reached from `idle`, which is both the state a fresh game
+ * starts in and the state every round returns to after cleanup.
+ *
+ * This is the *only* place a round's number advances and the only place
+ * `RoundStarted` is emitted. That is deliberate: an earlier version let cleanup
+ * transition straight to `betting`, which meant `startRound` ran exactly once
+ * per game — `roundNumber` sat at 1 forever and `RoundStarted` fired once. The
+ * report card (SPEC §9) reads `roundNumber` as a count of hands played, and a
+ * counterfactual recording (SPEC §7) is identified by the round it replays, so
+ * both depended on a number that never moved.
+ */
 function startRound(state: RoundState): StepResult {
   const roundNumber = state.roundNumber + 1;
   return transition({ ...state, roundNumber }, 'betting', [
@@ -779,7 +791,9 @@ function cleanup(state: RoundState): StepResult {
     shufflePending,
   };
 
-  return transition(cleared, shufflePending ? 'shuffle' : 'betting', events);
+  // Back to `idle`, not straight to `betting`: every round begins in exactly one
+  // place, `startRound`. See the note there.
+  return transition(cleared, shufflePending ? 'shuffle' : 'idle', events);
 }
 
 /**
@@ -797,7 +811,7 @@ function doShuffle(state: RoundState): StepResult {
       shoeSeed: seed,
       shufflePending: false,
     },
-    'betting',
+    'idle',
     [{ type: 'ShuffleStarted', seed }],
   );
 }
