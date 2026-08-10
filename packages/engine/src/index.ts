@@ -23,3 +23,4 @@ export * from './view.js';
 export * from './bots.js';
 export * from './play.js';
 export * from './replay.js';
+export * from './session.js';
