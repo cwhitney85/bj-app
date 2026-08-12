@@ -410,13 +410,9 @@ function peek(state: RoundState): StepResult {
     ...state,
     dealer: { ...state.dealer, holeCardRevealed: true },
   };
+  const { total, soft } = handTotal(state.dealer.cards);
   return transition(revealed, 'settlement', [
-    {
-      type: 'HoleCardRevealed',
-      card: hole,
-      total: handTotal(state.dealer.cards).total,
-      dealerBlackjack: true,
-    },
+    { type: 'HoleCardRevealed', card: hole, total, soft, dealerBlackjack: true },
   ]);
 }
 
@@ -571,14 +567,23 @@ export function applyAction(state: RoundState, seatIndex: number, action: Action
         soft,
         initialDeal: false,
       });
-      if (isBust(cards)) events.push({ type: 'HandBusted', ref, total });
+      // Announce the resolution here, not just a bust. `advanceTurn` skips
+      // reporting the hand it was told just acted (`justActed`), on the
+      // assumption that this branch already did — which held for a bust and
+      // failed for a hit that lands on exactly 21. That hand was then settled
+      // without any event ever saying it had finished, so a screen driven by
+      // the stream alone would leave it drawn as live for the rest of the
+      // round. Routed through `resolutionEvents` rather than a second
+      // hard-coded push, so there is one rule about what finishing looks like.
+      const hitHand: Hand = { ...hand, cards };
+      if (isResolved(hitHand)) events.push(...resolutionEvents(seatIndex, handIndex, hitHand));
       break;
     }
 
     case 'double': {
       const draw = dealCard(state.shoe);
       const cards = [...hand.cards, draw.card];
-      const { total } = handTotal(cards);
+      const { total, soft } = handTotal(cards);
       const doubledSeat: Seat = { ...seat, bankroll: seat.bankroll - hand.bet };
       next = {
         ...replaceHand(replaceSeat(state, doubledSeat), seatIndex, handIndex, {
@@ -590,7 +595,7 @@ export function applyAction(state: RoundState, seatIndex: number, action: Action
         shoe: draw.shoe,
       };
       events.push(
-        { type: 'HandDoubled', ref, card: draw.card, total, bet: hand.bet * 2 },
+        { type: 'HandDoubled', ref, card: draw.card, total, soft, bet: hand.bet * 2 },
         {
           type: 'BankrollChanged',
           seat: seatIndex,
@@ -685,10 +690,12 @@ function playDealer(state: RoundState): StepResult {
   if (hole === undefined) throw new Error('No dealer hole card');
 
   if (!state.dealer.holeCardRevealed) {
+    const { total, soft } = handTotal(state.dealer.cards);
     events.push({
       type: 'HoleCardRevealed',
       card: hole,
-      total: handTotal(state.dealer.cards).total,
+      total,
+      soft,
       dealerBlackjack: state.dealer.hasBlackjack,
     });
   }

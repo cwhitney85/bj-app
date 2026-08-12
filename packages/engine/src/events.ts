@@ -33,13 +33,31 @@ export type GameEvent =
   | { readonly type: 'InsuranceOffered'; readonly seats: readonly number[]; readonly cost: number }
   | { readonly type: 'InsuranceTaken'; readonly seat: number; readonly amount: number; readonly bankroll: number }
   | { readonly type: 'InsuranceDeclined'; readonly seat: number }
-  | { readonly type: 'HoleCardRevealed'; readonly card: Card; readonly total: number; readonly dealerBlackjack: boolean }
+  /** `soft` is carried for the same reason `DealerDrew` and `DealerStood` carry
+   *  it: a revealed A,6 renders as a soft 17, and the UI is not allowed to
+   *  re-derive that (SPEC §4). */
+  | {
+      readonly type: 'HoleCardRevealed';
+      readonly card: Card;
+      readonly total: number;
+      readonly soft: boolean;
+      readonly dealerBlackjack: boolean;
+    }
   /** `wasRecommended` is filled in by the coaching layer (M2); the engine itself
    *  has no opinion about whether an action was correct. */
   | { readonly type: 'PlayerActed'; readonly ref: SeatRef; readonly action: Action; readonly wasRecommended?: boolean }
   | { readonly type: 'HandBusted'; readonly ref: SeatRef; readonly total: number }
   | { readonly type: 'HandStood'; readonly ref: SeatRef; readonly total: number; readonly soft: boolean }
-  | { readonly type: 'HandDoubled'; readonly ref: SeatRef; readonly card: Card; readonly total: number; readonly bet: number }
+  /** `soft` for the same reason as `HoleCardRevealed`: a doubled A,5,3 is a soft
+   *  19, and soft-versus-hard is the distinction the app exists to teach. */
+  | {
+      readonly type: 'HandDoubled';
+      readonly ref: SeatRef;
+      readonly card: Card;
+      readonly total: number;
+      readonly soft: boolean;
+      readonly bet: number;
+    }
   | { readonly type: 'HandSplit'; readonly ref: SeatRef; readonly newHandIndex: number; readonly bet: number }
   | { readonly type: 'HandSurrendered'; readonly ref: SeatRef }
   | { readonly type: 'TurnStarted'; readonly ref: SeatRef; readonly legalActions: readonly Action[] }
