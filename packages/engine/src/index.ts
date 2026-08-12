@@ -25,3 +25,4 @@ export * from './play.js';
 export * from './replay.js';
 export * from './session.js';
 export * from './coach.js';
+export * from './report.js';
