@@ -15,6 +15,7 @@ import {
   bet,
   botDeciders,
   DEFAULT_CONFIG,
+  dismissCheck,
   drawAll,
   drawNext,
   hint,
@@ -22,6 +23,7 @@ import {
   insure,
   openTableState,
   requestHint,
+  revealCheck,
   tally,
   type Hint,
   type HintMode,
@@ -50,10 +52,23 @@ export type Table = TableState & {
   readonly askForHint: () => void;
   /** Draw everything still queued — the "skip animation" control. */
   readonly skip: () => void;
+  /** SPEC §7: "Let's check." */
+  readonly checkJerk: () => void;
+  readonly dismissJerkCheck: () => void;
+  readonly jerkMode: boolean;
+  /**
+   * SPEC §6's toggle. **Deals a new table**, and says so at the call site: who
+   * sits where and how they play is setup fixed before a card is dealt
+   * (shown.ts decision 56), so changing it mid-session would leave the felt
+   * showing hands played under the old seating and the tally counting rounds
+   * that were never played the way it says they were.
+   */
+  readonly setJerkMode: (on: boolean) => void;
 };
 
-export function useTable(config: TableConfig = DEFAULT_CONFIG): Table {
-  const [deciders] = useState(() => botDeciders(config));
+export function useTable(initialConfig: TableConfig = DEFAULT_CONFIG): Table {
+  const [config, setConfig] = useState(initialConfig);
+  const deciders = useMemo(() => botDeciders(config), [config]);
   const [state, setState] = useState<TableState>(() => openTableState(config, deciders));
   const [hintMode, setHintMode] = useState<HintMode>('always');
 
@@ -94,5 +109,16 @@ export function useTable(config: TableConfig = DEFAULT_CONFIG): Table {
     ),
     askForHint: useCallback(() => setState(requestHint), []),
     skip: useCallback(() => setState(drawAll), []),
+    checkJerk: useCallback(() => setState(revealCheck), []),
+    dismissJerkCheck: useCallback(() => setState(dismissCheck), []),
+    jerkMode: config.jerkMode,
+    setJerkMode: useCallback(
+      (on: boolean) => {
+        const next: TableConfig = { ...config, jerkMode: on };
+        setConfig(next);
+        setState(openTableState(next, botDeciders(next)));
+      },
+      [config],
+    ),
   };
 }

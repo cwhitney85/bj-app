@@ -13,6 +13,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { HintCard } from '../hint/HintCard';
 import { SessionTally } from '../hint/SessionTally';
+import { JerkCheckCard } from '../jerk/JerkCheck';
 import { HINT_MODES, type HintMode } from './tableState';
 import { useTable, type Table } from './useTable';
 
@@ -47,8 +48,20 @@ export function TableScreen() {
         </View>
 
         <HintModePicker mode={table.hintMode} onChange={table.setHintMode} />
+        <JerkModeToggle on={table.jerkMode} onChange={table.setJerkMode} />
       </ScrollView>
 
+      {/* SPEC §7 sits above the hint: it is about the round that just ended,
+          and the hint is about the decision in front of the player. Nearest the
+          buttons wins. */}
+      {table.jerkCheck === null ? null : (
+        <JerkCheckCard
+          check={table.jerkCheck}
+          tally={table.report.jerk}
+          onCheck={table.checkJerk}
+          onDismiss={table.dismissJerkCheck}
+        />
+      )}
       {/* The hint sits directly above the buttons it is advice about (SPEC §5.5). */}
       {table.hint === null ? null : <HintCard hint={table.hint} />}
       <Controls table={table} />
@@ -220,6 +233,35 @@ function HintModePicker({
             </Text>
           </Pressable>
         ))}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * SPEC §6's toggle. It says "new table" because it deals one — seating is fixed
+ * before a card is dealt, so this is the seat-select screen's control living
+ * temporarily on the felt, not a setting that can change mid-session.
+ */
+function JerkModeToggle({
+  on,
+  onChange,
+}: {
+  readonly on: boolean;
+  readonly onChange: (on: boolean) => void;
+}) {
+  return (
+    <View style={styles.modes}>
+      <Text style={styles.label}>Jerk Mode</Text>
+      <View style={styles.modeRow}>
+        <Pressable
+          style={[styles.mode, on && styles.modeActive]}
+          onPress={() => onChange(!on)}
+        >
+          <Text style={[styles.modeText, on && styles.modeTextActive]}>
+            {on ? 'On — new table to turn off' : 'Off — new table to turn on'}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
