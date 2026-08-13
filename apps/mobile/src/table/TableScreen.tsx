@@ -11,18 +11,21 @@ import type { Action, Card, ShownCard, ShownDealer, ShownHand, ShownSeat } from 
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { useTable } from './useTable';
-
-const SEED = 20260812;
+import { HintCard } from '../hint/HintCard';
+import { SessionTally } from '../hint/SessionTally';
+import { HINT_MODES, type HintMode } from './tableState';
+import { useTable, type Table } from './useTable';
 
 export function TableScreen() {
-  const table = useTable(SEED);
+  const table = useTable();
   const { felt } = table;
 
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.felt}>
+        <SessionTally report={table.report} />
+
         <Text style={styles.shoe}>
           Round {felt.roundNumber} · {felt.phase} · shoe {felt.shoeIndex}
           {felt.shufflePending ? ' · cut card reached' : ''}
@@ -42,8 +45,12 @@ export function TableScreen() {
               />
             ))}
         </View>
+
+        <HintModePicker mode={table.hintMode} onChange={table.setHintMode} />
       </ScrollView>
 
+      {/* The hint sits directly above the buttons it is advice about (SPEC §5.5). */}
+      {table.hint === null ? null : <HintCard hint={table.hint} />}
       <Controls table={table} />
     </View>
   );
@@ -130,7 +137,7 @@ function FaceCard({ shown }: { readonly shown: ShownCard }) {
 
 // --- The action bar --------------------------------------------------------
 
-function Controls({ table }: { readonly table: ReturnType<typeof useTable> }) {
+function Controls({ table }: { readonly table: Table }) {
   const { prompt, caughtUp } = table;
 
   if (!caughtUp) {
@@ -152,10 +159,10 @@ function Controls({ table }: { readonly table: ReturnType<typeof useTable> }) {
               key={amount}
               label={`$${amount}`}
               disabled={amount < prompt.min || amount > prompt.max}
-              onPress={() => table.bet(amount)}
+              onPress={() => table.placeBet(amount)}
             />
           ))}
-          <Button label="Sit out" onPress={() => table.bet(0)} />
+          <Button label="Sit out" onPress={() => table.placeBet(0)} />
         </View>
       );
 
@@ -163,8 +170,9 @@ function Controls({ table }: { readonly table: ReturnType<typeof useTable> }) {
       return (
         <View style={styles.controls}>
           <Text style={styles.dealing}>Insurance ${prompt.stake.toFixed(2)}?</Text>
-          <Button label="No" onPress={() => table.insure(false)} />
-          <Button label="Yes" onPress={() => table.insure(true)} />
+          <Button label="No" onPress={() => table.takeInsurance(false)} />
+          <Button label="Yes" onPress={() => table.takeInsurance(true)} />
+          <HintButton table={table} />
         </View>
       );
 
@@ -172,34 +180,87 @@ function Controls({ table }: { readonly table: ReturnType<typeof useTable> }) {
       return (
         <View style={styles.controls}>
           {prompt.view.legalActions.map((action: Action) => (
-            <Button key={action} label={ACTION_LABELS[action]} onPress={() => table.act(action)} />
+            <Button
+              key={action}
+              label={ACTION_LABELS[action]}
+              onPress={() => table.takeAction(action)}
+            />
           ))}
+          <HintButton table={table} />
         </View>
       );
   }
+}
+
+/** `on-request` (SPEC §5.5). Renders nothing in the other three modes. */
+function HintButton({ table }: { readonly table: Table }) {
+  if (!table.hintAvailable) return null;
+  return <Button label="Hint?" onPress={table.askForHint} secondary />;
+}
+
+function HintModePicker({
+  mode,
+  onChange,
+}: {
+  readonly mode: HintMode;
+  readonly onChange: (mode: HintMode) => void;
+}) {
+  return (
+    <View style={styles.modes}>
+      <Text style={styles.label}>Hints</Text>
+      <View style={styles.modeRow}>
+        {HINT_MODES.map((option) => (
+          <Pressable
+            key={option}
+            style={[styles.mode, option === mode && styles.modeActive]}
+            onPress={() => onChange(option)}
+          >
+            <Text style={[styles.modeText, option === mode && styles.modeTextActive]}>
+              {HINT_MODE_LABELS[option]}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 function Button({
   label,
   onPress,
   disabled,
+  secondary,
 }: {
   readonly label: string;
   readonly onPress: () => void;
   readonly disabled?: boolean;
+  readonly secondary?: boolean;
 }) {
   return (
     <Pressable
-      style={[styles.button, disabled === true && styles.buttonDisabled]}
+      style={[
+        styles.button,
+        secondary === true && styles.buttonSecondary,
+        disabled === true && styles.buttonDisabled,
+      ]}
       onPress={onPress}
       disabled={disabled === true}
     >
-      <Text style={styles.buttonText}>{label}</Text>
+      <Text style={[styles.buttonText, secondary === true && styles.buttonSecondaryText]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 // --- Formatting ------------------------------------------------------------
+
+const HINT_MODE_LABELS: Record<HintMode, string> = {
+  always: 'Always',
+  'on-request': 'On request',
+  after: 'After the fact',
+  off: 'Off',
+};
 
 const ACTION_LABELS: Record<Action, string> = {
   hit: 'Hit',
@@ -284,5 +345,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   buttonDisabled: { opacity: 0.35 },
+  buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#e8c56a' },
   buttonText: { color: '#1a1a1a', fontWeight: '700', fontSize: 14 },
+  buttonSecondaryText: { color: '#e8c56a' },
+
+  modes: { gap: 6, paddingTop: 4 },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  mode: {
+    borderWidth: 1,
+    borderColor: '#2c5f4d',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  modeActive: { backgroundColor: '#e8c56a', borderColor: '#e8c56a' },
+  modeText: { color: '#8fbfa8', fontSize: 12 },
+  modeTextActive: { color: '#1a1a1a', fontWeight: '700' },
 });
