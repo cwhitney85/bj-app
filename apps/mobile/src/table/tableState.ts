@@ -24,8 +24,11 @@ import {
   counterfactual,
   createGame,
   createSession,
+  deriveSeed,
   EMPTY_JERK_TALLY,
   flatBettor,
+  JERK_POLICIES,
+  mulberry32,
   openTable,
   PERFECT_POLICY,
   policyById,
@@ -107,6 +110,32 @@ export type JerkCheck = {
   readonly revealed: boolean;
 };
 
+/**
+ * One finished round, waiting to be drawn, and who was playing badly while it
+ * was played.
+ *
+ * **The assignment travels with the round because `state.jerk` cannot answer
+ * for it.** `closeShownRound` runs on the draw clock, which lags the engine by
+ * the whole animation queue — so by the time a round finishes on screen, the
+ * player may have moved the habit to a different seat entirely. Correcting the
+ * *current* jerk in a round it did not play would replay a seat that was already
+ * following the book: `delta` of zero, verdict `unchanged`, and a tally quietly
+ * accumulating false evidence for the myth SPEC §7 exists to refute. Nothing
+ * would throw and every number would look reasonable. It is the same failure
+ * `SessionLog` warns about in report.ts — arithmetically correct and about
+ * nobody — and the same fix: score against what was actually in force.
+ */
+export type PendingRound = {
+  readonly recording: RoundRecording;
+  /**
+   * The assignment in force while this round was played, or `null` when no
+   * honest comparison exists for it. `null` has exactly two causes and they mean
+   * the same thing operationally: nobody was playing badly, or the round
+   * straddled a change and was played half under each assignment.
+   */
+  readonly jerk: JerkAssignment | null;
+};
+
 export type TableState = {
   readonly session: Session;
   /** What is drawn. Never `session.state` — see M4 decision 34. */
@@ -137,15 +166,28 @@ export type TableState = {
 
   // --- SPEC §7 -------------------------------------------------------------
 
-  /** Which seat plays badly and how, or `null` when Jerk Mode is off. */
+  /**
+   * Which seat plays badly and how, right now, or `null` for nobody.
+   *
+   * **Mutable, and that is why `PendingRound` exists.** The player may move the
+   * habit to any bot seat or clear it at any moment (`setJerk`), so this field
+   * answers "who is playing badly" and cannot answer "who was playing badly
+   * during the round now finishing on the felt". Those are different questions
+   * whenever the felt lags the engine, which is always.
+   */
   readonly jerk: JerkAssignment | null;
+  /**
+   * A jerk change landed while a round was in flight, so that round was played
+   * half under each assignment. Cleared when the round it spoils is stamped.
+   */
+  readonly jerkStraddled: boolean;
   /**
    * Rounds the *engine* has finished whose last card the player has not yet
    * been shown. They arrive on `step.completedRounds` at the tap and leave on
    * the draw clock, which is the whole reason this queue exists rather than the
    * recordings being consumed where they arrive.
    */
-  readonly unshownRounds: readonly RoundRecording[];
+  readonly unshownRounds: readonly PendingRound[];
   /**
    * Events drawn since the last `RoundStarted`, i.e. the round currently on the
    * felt. `counterfactual` needs the round's *actual* events to compare
@@ -165,10 +207,25 @@ export type TableConfig = {
   readonly bankroll: number;
   readonly botBet: number;
   readonly coachSettings: CoachSettings;
-  /** SPEC §6: exactly one bot seat gets a bad habit. */
-  readonly jerkMode: boolean;
+  /**
+   * SPEC §6: deal with one bot seat already holding a bad habit.
+   *
+   * Named for what it does rather than for a mode, because there is no longer a
+   * mode: who plays badly is `TableState.jerk` and changes whenever the player
+   * says so. This only decides where that starts.
+   */
+  readonly startWithJerk: boolean;
 };
 
+/**
+ * The headless default: one fixed table, so the suites here and in `jerk.test.ts`
+ * drive something reproducible without a screen.
+ *
+ * **Not the production path.** Seat select builds its config with `configFrom`
+ * (seatDraft.ts) from what the player chose, and mints a fresh seed per session.
+ * `route.test.ts` asserts the two agree, so this fixture cannot drift into
+ * describing a table the app can no longer deal.
+ */
 export const DEFAULT_CONFIG: TableConfig = {
   seed: 20260812,
   /** Bottom-centre in the eventual 2.5D arc (SPEC §9). */
@@ -177,24 +234,86 @@ export const DEFAULT_CONFIG: TableConfig = {
   bankroll: 500,
   botBet: 25,
   coachSettings: PURE_PLAY,
-  jerkMode: true,
+  startWithJerk: true,
 };
 
 /**
- * Who plays badly, and how (SPEC §6).
+ * Where the bad habit starts (SPEC §6).
  *
- * A pure function of the config rather than a field, so `seating`,
- * `botDeciders` and the tally cannot disagree about it — the seating chart
- * naming one seat while the deciders hand the habit to another would be a table
- * where the label and the play come apart, and nothing would fail.
+ * **`assignJerk` picks the seat; `habitFor` decides the habit.** Taking the
+ * policy `assignJerk` also returns would give a seat two possible habits
+ * depending on how the player reached it — the one drawn at deal, or the one
+ * `habitFor` gives after moving the habit away and back. Same seat, same seed,
+ * different bad player. One rule for "what does seat N play", and this is the
+ * call site that would otherwise have been the exception to it.
  *
- * `assignJerk` draws from a seed derived with its own label (M3 decision 23),
- * so turning this on cannot move a single card. That is what makes the
- * counterfactual a comparison rather than two unrelated shoes, and it is
- * asserted rather than trusted.
+ * Both draws derive from the seed under their own labels (M3 decision 23), so
+ * neither can move a single card. That is what makes the counterfactual a
+ * comparison rather than two unrelated shoes, and it is asserted rather than
+ * trusted.
  */
-export function jerkAt(config: TableConfig): JerkAssignment | null {
-  return config.jerkMode ? assignJerk(config.seed, config.botSeats) : null;
+export function openingJerk(config: TableConfig): JerkAssignment | null {
+  if (!config.startWithJerk) return null;
+  const drawn = assignJerk(config.seed, config.botSeats);
+  return drawn === null ? null : { seat: drawn.seat, policy: habitFor(config.seed, drawn.seat) };
+}
+
+/**
+ * The habit a given seat plays when it is the one playing badly.
+ *
+ * **A function of the seat, not of when it was chosen**, so moving the habit
+ * from seat 2 to seat 5 and back gives seat 5 the same personality both times.
+ * The alternative — redrawing on each move — makes the demo's subject change
+ * identity while the player is watching it, and makes a session unreproducible
+ * from its seed even though the cards are identical.
+ *
+ * Derived under its own per-seat label for the same reason `assignJerk` is:
+ * choosing a habit must not consume the shuffle's stream, or picking a different
+ * bad player would deal a different game and the counterfactual would be
+ * comparing two unrelated shoes.
+ */
+export function habitFor(seed: number, seat: number): BotPolicy {
+  const rng = mulberry32(deriveSeed(seed, `jerk-seat-${seat}`));
+  const policy = JERK_POLICIES[rng.nextInt(JERK_POLICIES.length)];
+  if (policy === undefined) {
+    throw new Error('habitFor: index out of range'); // unreachable: bound is the array length
+  }
+  return policy;
+}
+
+/**
+ * Hand the bad habit to a seat, or to nobody.
+ *
+ * Preconditions, both caller bugs and both thrown: `seat` is a bot seat at this
+ * table, or `null`. Handing the habit to the player's own chair or to an empty
+ * one would produce a `correctedSeat` that `counterfactual` refuses (it throws
+ * when the corrected and observed seats are the same) or that no decider will
+ * ever consult — a table where the label and the play have come apart.
+ *
+ * **Postcondition: the round in flight is spoiled for the tally.** A change
+ * landing mid-round means the bots before the player acted under one assignment
+ * and the bots after it under another, so no single seat can be corrected to
+ * produce an honest comparison. `jerkStraddled` marks it; `answer` converts that
+ * into a `null` stamp on the round when it completes. A change made at a bet
+ * prompt costs nothing, because no cards are out.
+ */
+export function setJerk(state: TableState, config: TableConfig, seat: number | null): TableState {
+  if (seat !== null && !config.botSeats.includes(seat)) {
+    throw new Error(`setJerk: seat ${seat} holds no bot at this table`);
+  }
+
+  const jerk: JerkAssignment | null =
+    seat === null ? null : { seat, policy: habitFor(config.seed, seat) };
+
+  if (jerk?.seat === state.jerk?.seat) return state;
+
+  return {
+    ...state,
+    jerk,
+    // A bet prompt is the one moment nothing is in flight: the round has not
+    // been played, so there is nothing to have straddled.
+    jerkStraddled: state.jerkStraddled || state.prompt.kind !== 'bet',
+  };
 }
 
 /**
@@ -214,30 +333,54 @@ const CARD_NEUTRAL_JERK: BotPolicy = policyById('always-insures');
 export function openTableState(config: TableConfig, deciders: Deciders): TableState {
   const game = createGame({ rules: VEGAS_STRIP, seed: config.seed, seats: seating(config) });
   const step = advanceUntilPlayer(createSession(game), deciders);
+  const jerk = openingJerk(config);
   return {
     ...arriveAt(step, config.coachSettings),
     felt: openTable(game.seats),
     reviewed: null,
     log: [],
     decisions: [],
-    jerk: jerkAt(config),
-    unshownRounds: step.completedRounds,
+    jerk,
+    jerkStraddled: false,
+    unshownRounds: step.completedRounds.map((recording) => ({ recording, jerk })),
     shownRoundEvents: [],
     jerkTally: EMPTY_JERK_TALLY,
     jerkCheck: null,
   };
 }
 
+/**
+ * Who occupies each chair.
+ *
+ * **The seating chart no longer names the jerk, and every bot is seated as
+ * `PERFECT_POLICY`.** It used to bake the habit into `occupant.policyId`, which
+ * was correct while the assignment was immutable and became a lie the moment it
+ * could move: the chart is written once at `createGame` and never rewritten, so
+ * a player moving the habit to another seat would leave the chart naming
+ * somebody who had stopped playing badly.
+ *
+ * The old invariant was "the chart and the deciders must agree about who the
+ * jerk is". It is replaced by a stronger one — **only `TableState.jerk` knows**,
+ * and the deciders are derived from it on every advance. Two sources of truth
+ * that must be kept in agreement is a weaker guarantee than one source, and
+ * `occupant.policyId` was the one that could not be updated.
+ *
+ * Nothing reads `policyId` in the app; `occupantPolicyId` (play.ts) is the only
+ * reader in the repo and has no call site. If a screen ever wants "what is this
+ * seat playing", it wants `state.jerk`, which is live.
+ */
 export function seating(config: TableConfig): readonly SeatConfig[] {
-  const jerk = jerkAt(config);
   return Array.from({ length: VEGAS_STRIP.seatCount }, (_, index): SeatConfig => {
     if (index === config.playerSeat) {
       return { occupant: { kind: 'player' }, bankroll: config.bankroll };
     }
     if (config.botSeats.includes(index)) {
-      const policy = jerk !== null && jerk.seat === index ? jerk.policy : PERFECT_POLICY;
       return {
-        occupant: { kind: 'bot', policyId: policy.id, characterId: `seat-${index}` },
+        occupant: {
+          kind: 'bot',
+          policyId: PERFECT_POLICY.id,
+          characterId: `seat-${index}`,
+        },
         bankroll: config.bankroll,
       };
     }
@@ -245,8 +388,32 @@ export function seating(config: TableConfig): readonly SeatConfig[] {
   });
 }
 
-export function botDeciders(config: TableConfig): Deciders {
-  const jerk = jerkAt(config);
+/**
+ * How each bot seat plays, right now.
+ *
+ * Takes the assignment rather than reading it off the config, because it is
+ * `TableState.jerk` that changes and the config that does not. Re-derived on
+ * every advance, which is free: `Deciders` is an argument to the transitions
+ * rather than a field on the state (M4 decision 33), so swapping a policy
+ * mid-session needs no engine state to be rewritten and cannot invalidate a hand
+ * already in progress.
+ */
+/**
+ * The deciders a table is dealt with — `botDeciders` under the opening
+ * assignment.
+ *
+ * Exists so the pairing has one name. `openTableState` computes the opening
+ * assignment internally, and a caller that passed deciders built from a
+ * *different* assignment would deal a table whose `state.jerk` names one seat
+ * while the deciders hand the habit to another — the exact "label and play come
+ * apart" failure the old `seating` comment warned about, relocated. There is now
+ * one expression that cannot get it wrong.
+ */
+export function openingDeciders(config: TableConfig): Deciders {
+  return botDeciders(config, openingJerk(config));
+}
+
+export function botDeciders(config: TableConfig, jerk: JerkAssignment | null): Deciders {
   return new Map(
     config.botSeats.map((seat) => [
       seat,
@@ -361,20 +528,32 @@ function closeShownRound(state: TableState, opening: GameEvent): TableState {
   const closed = state.shownRoundEvents.slice(0, -1);
   const reopened = [opening];
   const head = closed[0];
-  const jerk = state.jerk;
 
   // The very first drawn event is `RoundStarted(1)`: nothing precedes it, so
   // there is no round to close and no recording can be waiting.
-  if (head === undefined || head.type !== 'RoundStarted' || jerk === null) {
+  if (head === undefined || head.type !== 'RoundStarted') {
     return { ...state, shownRoundEvents: reopened };
   }
 
-  const recording = state.unshownRounds.find((round) => round.roundNumber === head.roundNumber);
-  if (recording === undefined) {
+  const pending = state.unshownRounds.find(
+    (round) => round.recording.roundNumber === head.roundNumber,
+  );
+  if (pending === undefined) {
     return { ...state, shownRoundEvents: reopened };
   }
 
-  const result = counterfactual(recording, closed, {
+  // Spent either way: a round with no honest comparison is still a round the
+  // player has now watched, and leaving it queued would strand it forever and
+  // let a later round match the wrong recording.
+  const spent = state.unshownRounds.filter((round) => round !== pending);
+
+  // The assignment this round was *played* under, not the one in force now.
+  const jerk = pending.jerk;
+  if (jerk === null) {
+    return { ...state, shownRoundEvents: reopened, unshownRounds: spent };
+  }
+
+  const result = counterfactual(pending.recording, closed, {
     correctedSeat: jerk.seat,
     observedSeat: state.session.playerSeat,
   });
@@ -382,7 +561,7 @@ function closeShownRound(state: TableState, opening: GameEvent): TableState {
   return {
     ...state,
     shownRoundEvents: reopened,
-    unshownRounds: state.unshownRounds.filter((round) => round !== recording),
+    unshownRounds: spent,
     jerkTally: addToTally(state.jerkTally, result),
     jerkCheck: offersCheck(result, jerk.policy)
       ? { result, policy: jerk.policy, revealed: false }
@@ -458,8 +637,40 @@ export function answer(
     // Queued, not consumed. The engine has finished these rounds; the player
     // has not yet watched them finish, and SPEC §7's verdict is about money
     // they have seen change hands. `closeShownRound` is where they are spent.
-    unshownRounds: [...state.unshownRounds, ...step.completedRounds],
+    //
+    // Stamped here, with the assignment that was in force while they were
+    // played — which is `state.jerk` at this instant, because `setJerk` can only
+    // run between advances. Reading it again at draw time would read whatever
+    // the player has since chosen. See `PendingRound`.
+    unshownRounds: [...state.unshownRounds, ...stamp(state, step.completedRounds)],
+    // **Cleared only once it has spoiled a round, not on the next tap.** A
+    // change made mid-round is usually followed by several more decisions
+    // before that round ends — hit, hit, stand — and an advance that completes
+    // no round has had nothing to mark. Clearing it there would let the flag
+    // expire unused and the straddled round be stamped with the current
+    // assignment after all, which is the exact misattribution it exists to
+    // prevent.
+    jerkStraddled: state.jerkStraddled && step.completedRounds.length === 0,
   };
+}
+
+/**
+ * Attach the assignment in force to each round that just completed.
+ *
+ * **Only the first round can have been straddled**, because a straddle is a
+ * change made while a round was in flight and only one round can be in flight at
+ * a time. Any further rounds in the same batch began after the change and were
+ * played wholly under the new assignment. Batches of more than one arise when a
+ * tap plays several rounds through — a player sitting out, most often.
+ */
+function stamp(
+  state: TableState,
+  completed: readonly RoundRecording[],
+): readonly PendingRound[] {
+  return completed.map((recording, index) => ({
+    recording,
+    jerk: index === 0 && state.jerkStraddled ? null : state.jerk,
+  }));
 }
 
 export function bet(state: TableState, amount: number, deciders: Deciders, settings: CoachSettings) {

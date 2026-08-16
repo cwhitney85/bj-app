@@ -1,5 +1,5 @@
-import { TableScreen } from './src/table/TableScreen';
+import { AppShell } from './src/shell/AppShell';
 
 export default function App() {
-  return <TableScreen />;
+  return <AppShell />;
 }

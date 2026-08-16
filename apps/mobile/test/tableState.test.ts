@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import {
   act,
   bet,
-  botDeciders,
+  openingDeciders,
   DEFAULT_CONFIG,
   drawAll,
   drawNext,
@@ -37,7 +37,7 @@ import {
 } from '../src/table/tableState';
 
 const CONFIG: TableConfig = { ...DEFAULT_CONFIG, seed: 20260812 };
-const DECIDERS = botDeciders(CONFIG);
+const DECIDERS = openingDeciders(CONFIG);
 const SETTINGS = CONFIG.coachSettings;
 const BET = 5;
 

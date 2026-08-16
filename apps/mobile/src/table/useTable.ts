@@ -21,9 +21,11 @@ import {
   hint,
   hintAvailable,
   insure,
+  openingDeciders,
   openTableState,
   requestHint,
   revealCheck,
+  setJerk,
   tally,
   type Hint,
   type HintMode,
@@ -42,8 +44,6 @@ export type Table = TableState & {
   readonly hint: Hint | null;
   /** The mode has a hint the player has not asked for — draw the button. */
   readonly hintAvailable: boolean;
-  readonly hintMode: HintMode;
-  readonly setHintMode: (mode: HintMode) => void;
   /** The report card so far (SPEC §9), over the events drawn. */
   readonly report: SessionReport;
   readonly placeBet: (amount: number) => void;
@@ -55,22 +55,47 @@ export type Table = TableState & {
   /** SPEC §7: "Let's check." */
   readonly checkJerk: () => void;
   readonly dismissJerkCheck: () => void;
-  readonly jerkMode: boolean;
+  /** Bot seats at this table, in seating order — the jerk picker's options. */
+  readonly botSeats: readonly number[];
   /**
-   * SPEC §6's toggle. **Deals a new table**, and says so at the call site: who
-   * sits where and how they play is setup fixed before a card is dealt
-   * (shown.ts decision 56), so changing it mid-session would leave the felt
-   * showing hands played under the old seating and the tally counting rounds
-   * that were never played the way it says they were.
+   * SPEC §6: hand the bad habit to a bot seat, or to nobody.
+   *
+   * Takes effect on the next decision any bot makes. It does **not** re-deal:
+   * `Deciders` is an argument rather than engine state (M4 decision 33), so the
+   * shoe, the seating and every hand in progress are untouched. The round in
+   * flight is dropped from the §7 tally rather than misattributed — see
+   * `setJerk` and `PendingRound`.
    */
-  readonly setJerkMode: (on: boolean) => void;
+  readonly setJerkSeat: (seat: number | null) => void;
 };
 
-export function useTable(initialConfig: TableConfig = DEFAULT_CONFIG): Table {
-  const [config, setConfig] = useState(initialConfig);
-  const deciders = useMemo(() => botDeciders(config), [config]);
-  const [state, setState] = useState<TableState>(() => openTableState(config, deciders));
-  const [hintMode, setHintMode] = useState<HintMode>('always');
+/**
+ * Drive one table.
+ *
+ * **Precondition: `config` is fixed for the life of the component.** It is read
+ * exactly once, in the `useState` initialiser, because who sits where and how
+ * they play is setup fixed before a card is dealt (shown.ts decision 56) — a
+ * config that changed underneath a live session would leave the felt showing
+ * hands played under seating the config no longer describes, and nothing would
+ * throw. The caller keeps this by keying the component on `config.seed`, so a
+ * genuinely different table mounts a different component (`AppShell`). This hook
+ * used to hold the config in its own state and re-deal on a Jerk Mode toggle,
+ * which honoured the same invariant by destroying the session; seat select owns
+ * that choice now, before there is a session to destroy.
+ *
+ * `hintMode` is the opposite kind of input: it is a setting, it may change at any
+ * moment, and it is pure presentation over coaching that was computed at the
+ * prompt regardless of mode (decision 62). So it is a plain prop, re-read every
+ * render, and changing it mid-hand is safe by construction.
+ */
+export function useTable(config: TableConfig = DEFAULT_CONFIG, hintMode: HintMode = 'always'): Table {
+  const [state, setState] = useState<TableState>(() =>
+    openTableState(config, openingDeciders(config)),
+  );
+
+  // Live: re-derived whenever the player moves the habit, so the next advance
+  // is driven by whoever is playing badly *now*.
+  const deciders = useMemo(() => botDeciders(config, state.jerk), [config, state.jerk]);
 
   const settings: CoachSettings = config.coachSettings;
 
@@ -92,8 +117,6 @@ export function useTable(initialConfig: TableConfig = DEFAULT_CONFIG): Table {
     playerSeat: state.session.playerSeat,
     hint: hint(state, hintMode),
     hintAvailable: hintAvailable(state, hintMode),
-    hintMode,
-    setHintMode,
     report,
     placeBet: useCallback(
       (amount: number) => setState((s) => bet(s, amount, deciders, settings)),
@@ -111,13 +134,9 @@ export function useTable(initialConfig: TableConfig = DEFAULT_CONFIG): Table {
     skip: useCallback(() => setState(drawAll), []),
     checkJerk: useCallback(() => setState(revealCheck), []),
     dismissJerkCheck: useCallback(() => setState(dismissCheck), []),
-    jerkMode: config.jerkMode,
-    setJerkMode: useCallback(
-      (on: boolean) => {
-        const next: TableConfig = { ...config, jerkMode: on };
-        setConfig(next);
-        setState(openTableState(next, botDeciders(next)));
-      },
+    botSeats: config.botSeats,
+    setJerkSeat: useCallback(
+      (seat: number | null) => setState((s) => setJerk(s, config, seat)),
       [config],
     ),
   };

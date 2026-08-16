@@ -5,32 +5,68 @@
  * stream. The 2.5D felt, the seat arc and real card faces are still ahead; this
  * is the layout in its honest first form, so that what is on screen is provably
  * what the engine narrated.
+ *
+ * **What this screen no longer owns.** It used to carry the hint-mode picker and
+ * the Jerk Mode toggle as felt furniture. Both belonged elsewhere and said so:
+ * hint mode is a setting (SPEC §5.5) and Jerk Mode is a seating decision fixed
+ * before a card is dealt (SPEC §9's seat select), which the toggle honoured by
+ * re-dealing the table underneath the player and discarding the session. They
+ * are props and a `SeatDraft` now. What is left is the felt, the coaching that
+ * belongs directly above the action buttons, and a rail that leaves.
  */
 
-import type { Action, Card, ShownCard, ShownDealer, ShownHand, ShownSeat } from '@bj/engine';
-import { StatusBar } from 'expo-status-bar';
+import type { Action, Card, SessionReport, ShownCard, ShownDealer, ShownHand, ShownSeat } from '@bj/engine';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { HintCard } from '../hint/HintCard';
 import { SessionTally } from '../hint/SessionTally';
 import { JerkCheckCard } from '../jerk/JerkCheck';
-import { HINT_MODES, type HintMode } from './tableState';
+import { JerkPicker } from '../jerk/JerkPicker';
+import type { HintMode, TableConfig } from './tableState';
 import { useTable, type Table } from './useTable';
 
-export function TableScreen() {
-  const table = useTable();
+export function TableScreen({
+  config,
+  hintMode,
+  onEndSession,
+  onSettings,
+}: {
+  /** Fixed for the life of this component — see `useTable`. */
+  readonly config: TableConfig;
+  readonly hintMode: HintMode;
+  /** Hands the report up rather than rendering it: the report card is a screen. */
+  readonly onEndSession: (report: SessionReport) => void;
+  readonly onSettings: () => void;
+}) {
+  const table = useTable(config, hintMode);
   const { felt } = table;
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
+      <View style={styles.rail}>
+        <Pressable accessibilityRole="button" onPress={onSettings} hitSlop={8}>
+          <Text style={styles.railLink}>Settings</Text>
+        </Pressable>
+        <Text style={styles.shoe}>
+          Round {felt.roundNumber} · shoe {felt.shoeIndex}
+          {felt.shufflePending ? ' · cut card' : ''}
+        </Text>
+        {/* The only way to the report card, so it says what it produces rather
+            than "Quit". Ending is not destructive — the report is the point of
+            having played. */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onEndSession(table.report)}
+          hitSlop={8}
+        >
+          <Text style={styles.railLink}>End session</Text>
+        </Pressable>
+      </View>
+
       <ScrollView contentContainerStyle={styles.felt}>
         <SessionTally report={table.report} />
 
-        <Text style={styles.shoe}>
-          Round {felt.roundNumber} · {felt.phase} · shoe {felt.shoeIndex}
-          {felt.shufflePending ? ' · cut card reached' : ''}
-        </Text>
+        <Text style={styles.phase}>{felt.phase}</Text>
 
         <Dealer dealer={felt.dealer} />
 
@@ -47,8 +83,9 @@ export function TableScreen() {
             ))}
         </View>
 
-        <HintModePicker mode={table.hintMode} onChange={table.setHintMode} />
-        <JerkModeToggle on={table.jerkMode} onChange={table.setJerkMode} />
+        {/* SPEC §6, and unlike the toggle this replaced it changes nothing that
+            is already dealt — so it genuinely belongs on the table. */}
+        <JerkPicker botSeats={table.botSeats} jerk={table.jerk} onChange={table.setJerkSeat} />
       </ScrollView>
 
       {/* SPEC §7 sits above the hint: it is about the round that just ended,
@@ -211,62 +248,6 @@ function HintButton({ table }: { readonly table: Table }) {
   return <Button label="Hint?" onPress={table.askForHint} secondary />;
 }
 
-function HintModePicker({
-  mode,
-  onChange,
-}: {
-  readonly mode: HintMode;
-  readonly onChange: (mode: HintMode) => void;
-}) {
-  return (
-    <View style={styles.modes}>
-      <Text style={styles.label}>Hints</Text>
-      <View style={styles.modeRow}>
-        {HINT_MODES.map((option) => (
-          <Pressable
-            key={option}
-            style={[styles.mode, option === mode && styles.modeActive]}
-            onPress={() => onChange(option)}
-          >
-            <Text style={[styles.modeText, option === mode && styles.modeTextActive]}>
-              {HINT_MODE_LABELS[option]}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-/**
- * SPEC §6's toggle. It says "new table" because it deals one — seating is fixed
- * before a card is dealt, so this is the seat-select screen's control living
- * temporarily on the felt, not a setting that can change mid-session.
- */
-function JerkModeToggle({
-  on,
-  onChange,
-}: {
-  readonly on: boolean;
-  readonly onChange: (on: boolean) => void;
-}) {
-  return (
-    <View style={styles.modes}>
-      <Text style={styles.label}>Jerk Mode</Text>
-      <View style={styles.modeRow}>
-        <Pressable
-          style={[styles.mode, on && styles.modeActive]}
-          onPress={() => onChange(!on)}
-        >
-          <Text style={[styles.modeText, on && styles.modeTextActive]}>
-            {on ? 'On — new table to turn off' : 'Off — new table to turn on'}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 function Button({
   label,
   onPress,
@@ -296,13 +277,6 @@ function Button({
 }
 
 // --- Formatting ------------------------------------------------------------
-
-const HINT_MODE_LABELS: Record<HintMode, string> = {
-  always: 'Always',
-  'on-request': 'On request',
-  after: 'After the fact',
-  off: 'Off',
-};
 
 const ACTION_LABELS: Record<Action, string> = {
   hit: 'Hit',
@@ -338,9 +312,22 @@ function suitPip(suit: Card['suit']): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b3d2e' },
+  /** The rail is laid out, not floated: it is the one strip that never scrolls. */
+  rail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingTop: 52,
+    paddingBottom: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#08281e',
+  },
+  railLink: { color: '#e8c56a', fontSize: 12, fontWeight: '600' },
   /** `paddingBottom` clears the action bar, which floats over the felt. */
-  felt: { padding: 16, paddingTop: 56, paddingBottom: 96, gap: 16 },
-  shoe: { color: '#8fbfa8', fontSize: 12, textAlign: 'center' },
+  felt: { padding: 16, paddingTop: 16, paddingBottom: 96, gap: 16 },
+  shoe: { color: '#8fbfa8', fontSize: 11, flexShrink: 1, textAlign: 'center' },
+  phase: { color: '#8fbfa8', fontSize: 12, textAlign: 'center' },
   dealer: { alignItems: 'center', gap: 6, paddingVertical: 12 },
   seats: { gap: 10 },
   seat: {
@@ -390,17 +377,4 @@ const styles = StyleSheet.create({
   buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#e8c56a' },
   buttonText: { color: '#1a1a1a', fontWeight: '700', fontSize: 14 },
   buttonSecondaryText: { color: '#e8c56a' },
-
-  modes: { gap: 6, paddingTop: 4 },
-  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  mode: {
-    borderWidth: 1,
-    borderColor: '#2c5f4d',
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  modeActive: { backgroundColor: '#e8c56a', borderColor: '#e8c56a' },
-  modeText: { color: '#8fbfa8', fontSize: 12 },
-  modeTextActive: { color: '#1a1a1a', fontWeight: '700' },
 });

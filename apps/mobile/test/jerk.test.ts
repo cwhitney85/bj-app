@@ -15,13 +15,17 @@
  *    (decision 64). A §7 verdict is about money that has already changed hands,
  *    so counting it at the tap would report the round while the felt still
  *    showed the hand live.
- * 3. **The seating chart and the deciders agree about who the jerk is.** They
- *    are derived separately, and a table where the label and the play come apart
- *    is a table where the demo names the wrong seat.
- * 4. **Turning Jerk Mode on moves no cards** (M3 decision 23). That is the
- *    property that makes the comparison a comparison rather than two unrelated
- *    shoes, and it is the app's job not to break it by threading the flag into
- *    the wrong seed.
+ * 3. **`TableState.jerk` is the only record of who plays badly.** The seating
+ *    chart used to carry it too; two sources that must be kept in agreement is a
+ *    weaker guarantee than one, and the chart was the one that could not be
+ *    updated once the player could move the habit mid-session.
+ * 4. **Choosing a bad player moves no cards** (M3 decision 23, extended per-seat
+ *    by `habitFor`). That is the property that makes the comparison a comparison
+ *    rather than two unrelated shoes, and it is the app's job not to break it by
+ *    threading the choice into the wrong seed.
+ * 5. **A round is attributed to whoever was playing badly *during it***, not to
+ *    whoever is playing badly when it finishes being drawn. Those differ
+ *    whenever the felt lags the engine, which is always.
  */
 
 import {
@@ -41,11 +45,14 @@ import {
   DEFAULT_CONFIG,
   drawAll,
   drawNext,
+  habitFor,
   insure,
-  jerkAt,
+  openingDeciders,
+  openingJerk,
   openTableState,
   revealCheck,
   seating,
+  setJerk,
   tally,
   type TableConfig,
   type TableState,
@@ -53,8 +60,8 @@ import {
 
 const BET = 5;
 
-const JERK_ON: TableConfig = { ...DEFAULT_CONFIG, jerkMode: true };
-const JERK_OFF: TableConfig = { ...DEFAULT_CONFIG, jerkMode: false };
+const JERK_ON: TableConfig = { ...DEFAULT_CONFIG, startWithJerk: true };
+const JERK_OFF: TableConfig = { ...DEFAULT_CONFIG, startWithJerk: false };
 
 // --- Driving ---------------------------------------------------------------
 
@@ -73,7 +80,7 @@ function book(state: TableState): Action {
 }
 
 /** Answer whatever is being asked. Does **not** drain afterwards — see test 2. */
-function submit(state: TableState, config: TableConfig, deciders = botDeciders(config)): TableState {
+function submit(state: TableState, config: TableConfig, deciders = openingDeciders(config)): TableState {
   const settings = config.coachSettings;
   switch (state.prompt.kind) {
     case 'bet':
@@ -87,7 +94,7 @@ function submit(state: TableState, config: TableConfig, deciders = botDeciders(c
 
 /** Play `rounds` rounds of book play, drawing everything, as a player would. */
 function play(config: TableConfig, rounds: number): TableState {
-  const deciders = botDeciders(config);
+  const deciders = openingDeciders(config);
   let state = drain(openTableState(config, deciders));
   for (let i = 0; i < rounds * 40; i += 1) {
     if (state.felt.roundNumber > rounds) break;
@@ -104,7 +111,7 @@ function roundsDrawn(log: readonly GameEvent[]): number {
 /** The lowest seed at or above `from` whose jerk plays `policyId`. */
 function seedWhoseJerkIs(policyId: string, from = 1): number {
   for (let seed = from; seed < from + 500; seed += 1) {
-    if (jerkAt({ ...JERK_ON, seed })?.policy.id === policyId) return seed;
+    if (openingJerk({ ...JERK_ON, seed })?.policy.id === policyId) return seed;
   }
   throw new Error(`no seed within 500 assigns "${policyId}"`);
 }
@@ -114,7 +121,7 @@ function playCollectingOffers(
   config: TableConfig,
   rounds: number,
 ): { readonly state: TableState; readonly offers: readonly Counterfactual[] } {
-  const deciders = botDeciders(config);
+  const deciders = openingDeciders(config);
   let state = drain(openTableState(config, deciders));
   const offers: Counterfactual[] = [];
 
@@ -145,11 +152,11 @@ const LOUD_SESSION = playCollectingOffers(
   300,
 );
 
-// --- 3. The chart and the deciders agree -----------------------------------
+// --- 3. One record of who plays badly ---------------------------------------
 
 describe('who plays badly', () => {
   it('is nobody at all with Jerk Mode off', () => {
-    expect(jerkAt(JERK_OFF)).toBeNull();
+    expect(openingJerk(JERK_OFF)).toBeNull();
     for (const index of JERK_OFF.botSeats) {
       const occupant = seating(JERK_OFF)[index]?.occupant;
       expect(occupant?.kind === 'bot' ? occupant.policyId : null).toBe(PERFECT_POLICY.id);
@@ -157,32 +164,36 @@ describe('who plays badly', () => {
   });
 
   it('is exactly one bot seat, and never the player', () => {
-    const jerk = jerkAt(JERK_ON);
+    const jerk = openingJerk(JERK_ON);
     expect(jerk).not.toBeNull();
     expect(JERK_ON.botSeats).toContain(jerk?.seat);
     expect(jerk?.seat).not.toBe(JERK_ON.playerSeat);
-
-    const bad = seating(JERK_ON).filter(
-      (seat) => seat.occupant.kind === 'bot' && seat.occupant.policyId !== PERFECT_POLICY.id,
-    );
-    expect(bad).toHaveLength(1);
   });
 
-  it('is the same seat in the seating chart and in the deciders', () => {
-    // Both are derived from the config independently. If they disagree, the
-    // screen names one seat and a different seat plays the habit — and the
-    // counterfactual then corrects a seat that was already playing the book,
-    // producing a tally of nothing but `unchanged` that looks like the lesson.
+  /**
+   * **The seating chart deliberately does not know.** It used to bake the habit
+   * into `occupant.policyId`, which was correct while the assignment was fixed
+   * at deal and became a lie once the player could move it: the chart is written
+   * once at `createGame` and never rewritten. The old invariant here was "the
+   * chart and the deciders agree"; keeping two sources in agreement is a weaker
+   * guarantee than having one, and this is the assertion that stops the second
+   * one growing back.
+   */
+  it('is not recorded in the seating chart at all', () => {
+    for (const config of [JERK_ON, JERK_OFF]) {
+      for (const seat of seating(config)) {
+        if (seat.occupant.kind !== 'bot') continue;
+        expect(seat.occupant.policyId).toBe(PERFECT_POLICY.id);
+      }
+    }
+  });
+
+  it('has a decider for every bot seat, and only for bot seats', () => {
     for (let seed = 1; seed <= 40; seed += 1) {
       const config: TableConfig = { ...JERK_ON, seed };
-      const jerk = jerkAt(config);
-      if (jerk === null) continue;
-
-      const chart = seating(config).findIndex(
-        (seat) => seat.occupant.kind === 'bot' && seat.occupant.policyId !== PERFECT_POLICY.id,
-      );
-      expect(chart).toBe(jerk.seat);
-      expect(botDeciders(config).has(jerk.seat)).toBe(true);
+      expect([...openingDeciders(config).keys()].sort((a, b) => a - b)).toEqual([
+        ...config.botSeats,
+      ]);
     }
   });
 
@@ -193,8 +204,8 @@ describe('who plays badly', () => {
     // would make every counterfactual a comparison of two different shoes
     // while still producing plausible numbers.
     for (let seed = 1; seed <= 20; seed += 1) {
-      const on = openTableState({ ...JERK_ON, seed }, botDeciders({ ...JERK_ON, seed }));
-      const off = openTableState({ ...JERK_OFF, seed }, botDeciders({ ...JERK_OFF, seed }));
+      const on = openTableState({ ...JERK_ON, seed }, openingDeciders({ ...JERK_ON, seed }));
+      const off = openTableState({ ...JERK_OFF, seed }, openingDeciders({ ...JERK_OFF, seed }));
       expect(on.session.state.shoe.cards).toEqual(off.session.state.shoe.cards);
       expect(on.session.state.shoeSeed).toBe(off.session.state.shoeSeed);
     }
@@ -227,7 +238,7 @@ describe('the jerk tally', () => {
 
   it('advances on the draw clock, not on the tap', () => {
     const config = JERK_ON;
-    const deciders = botDeciders(config);
+    const deciders = openingDeciders(config);
     let state = drain(openTableState(config, deciders));
 
     // Play until a submit finishes a round the felt has not caught up with.
@@ -257,7 +268,7 @@ describe('the jerk tally', () => {
     // decision 21), so more than one waiting recording means round identity has
     // broken — which is invisible except as a tally that quietly stops moving.
     const config = JERK_ON;
-    const deciders = botDeciders(config);
+    const deciders = openingDeciders(config);
     let state = drain(openTableState(config, deciders));
     for (let i = 0; i < 400; i += 1) {
       if (state.felt.roundNumber > 20) break;
@@ -278,7 +289,7 @@ describe('the jerk tally', () => {
     // to "when is a round over" — see `shown.test.ts` for the same property on
     // the felt and the log.
     const config = JERK_ON;
-    const deciders = botDeciders(config);
+    const deciders = openingDeciders(config);
     let slow = drain(openTableState(config, deciders));
     let fast = drawAll(openTableState(config, deciders));
 
@@ -319,7 +330,7 @@ describe('a bot that runs out of money', () => {
     };
 
     const state = play(config, 40);
-    const jerkSeat = jerkAt(config)?.seat ?? -1;
+    const jerkSeat = openingJerk(config)?.seat ?? -1;
     const broke = state.felt.seats[jerkSeat];
 
     expect(broke?.bankroll).toBeLessThan(config.botBet);
@@ -335,7 +346,7 @@ describe('a bot that runs out of money', () => {
       bankroll: 500,
       botBet: 250,
     };
-    const deciders = botDeciders(config);
+    const deciders = openingDeciders(config);
     let state = drain(openTableState(config, deciders));
 
     for (let i = 0; i < 800; i += 1) {
@@ -357,7 +368,7 @@ describe('a bot that runs out of money', () => {
 describe('the §7 offer', () => {
   it('only appears on a round the player lost', () => {
     const config = JERK_ON;
-    const deciders = botDeciders(config);
+    const deciders = openingDeciders(config);
     let state = drain(openTableState(config, deciders));
     let offers = 0;
 
@@ -369,7 +380,7 @@ describe('the §7 offer', () => {
         // SPEC §7: the offer answers the feeling a player only has after losing.
         expect(next.jerkCheck.result.actual.net).toBeLessThan(0);
         expect(next.jerkCheck.result.observedSeat).toBe(config.playerSeat);
-        expect(next.jerkCheck.result.correctedSeat).toBe(jerkAt(config)?.seat);
+        expect(next.jerkCheck.result.correctedSeat).toBe(openingJerk(config)?.seat);
         expect(next.jerkCheck.revealed).toBe(false);
       }
       state = next;
@@ -386,7 +397,7 @@ describe('the §7 offer', () => {
     const config: TableConfig = { ...JERK_ON, seed };
     const state = play(config, 30);
 
-    expect(jerkAt(config)?.policy.id).toBe('always-insures');
+    expect(openingJerk(config)?.policy.id).toBe('always-insures');
     expect(state.jerkCheck).toBeNull();
     expect(state.jerkTally.helped).toBe(0);
     expect(state.jerkTally.hurt).toBe(0);
@@ -399,7 +410,7 @@ describe('the §7 offer', () => {
     // computed for every round, so tapping must not change a single figure —
     // if it did, the tally and the card would be quoting two computations.
     const config = JERK_ON;
-    const deciders = botDeciders(config);
+    const deciders = openingDeciders(config);
     let state = drain(openTableState(config, deciders));
     for (let i = 0; i < 600 && state.jerkCheck === null; i += 1) {
       state = drain(submit(state, config, deciders));
@@ -459,4 +470,233 @@ describe('the §7 offer', () => {
     expect(decisive.length).toBeGreaterThan(5);
     expect(offeredHelped / decisive.length).toBeLessThan(0.25);
   });
+});
+
+
+// --- 5. Moving the bad habit mid-session -----------------------------------
+
+/**
+ * The player may hand the habit to any bot seat, or take it away, at any moment
+ * (SPEC §6). Four things must hold for that to be more than a cosmetic toggle,
+ * and the last two fail silently.
+ *
+ * 1. **A seat plays the same habit however it was reached.** Otherwise a session
+ *    stops being reproducible from its seed and the demo's subject changes
+ *    identity while the player watches it.
+ * 2. **It changes who actually plays badly**, not just a label.
+ * 3. **It moves no card**, so a counterfactual stays a comparison rather than
+ *    two unrelated shoes.
+ * 4. **A round is attributed to whoever was playing badly during it.**
+ *    `closeShownRound` runs on the draw clock, which lags the engine, so reading
+ *    the *current* assignment would correct a seat that had been following the
+ *    book — `delta` of zero, verdict `unchanged`, and a tally quietly
+ *    accumulating false evidence for the myth the feature refutes.
+ */
+describe('moving the bad habit', () => {
+  const SEATS = [2, 4] as const;
+
+  /**
+   * A seed at which *both* movable seats draw the loudest habit.
+   *
+   * Decision 68's trap, and this file's own warning: five of the six habits
+   * barely fire, and a divergence test seeded onto a quiet one compares two
+   * identical streams and passes while asserting nothing. `mimics-dealer`
+   * deviates most rounds, so with it at both seats the only difference between
+   * the two tables is *which* seat is bad — which is the thing being tested.
+   */
+  const LOUD_SEED = (() => {
+    for (let seed = 1; seed < 4000; seed += 1) {
+      if (SEATS.every((seat) => habitFor(seed, seat).id === 'mimics-dealer')) return seed;
+    }
+    throw new Error('no seed within 4000 gives both seats `mimics-dealer`');
+  })();
+
+  const MOVABLE: TableConfig = { ...JERK_ON, botSeats: [...SEATS], playerSeat: 3 };
+  const LOUD: TableConfig = { ...MOVABLE, seed: LOUD_SEED, startWithJerk: false };
+
+  function opened(config: TableConfig): TableState {
+    return drain(openTableState(config, openingDeciders(config)));
+  }
+
+  /** Play until a submit finishes a round the felt has not caught up with. */
+  function untilRoundQueued(state: TableState, config: TableConfig): TableState {
+    let caughtUp = state;
+    for (let i = 0; i < 200; i += 1) {
+      const submitted = submit(caughtUp, config, botDeciders(config, caughtUp.jerk));
+      if (submitted.unshownRounds.length > 0) return submitted;
+      caughtUp = drain(submitted);
+    }
+    throw new Error('no round completed within 200 submits');
+  }
+
+  it('gives a seat the same habit however it is reached', () => {
+    const start = opened(MOVABLE);
+    for (const seat of SEATS) {
+      // Directly, and by way of the other seat.
+      const other = seat === 2 ? 4 : 2;
+      const direct = setJerk(start, MOVABLE, seat);
+      const roundabout = setJerk(setJerk(start, MOVABLE, other), MOVABLE, seat);
+      expect(direct.jerk?.policy.id).toBe(habitFor(MOVABLE.seed, seat).id);
+      expect(roundabout.jerk?.policy.id).toBe(direct.jerk?.policy.id);
+    }
+  });
+
+  /**
+   * The opening assignment is the one call site that could have been the
+   * exception to that rule, because `assignJerk` returns a policy of its own.
+   */
+  it('opens with the habit that seat plays, not a second draw', () => {
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const jerk = openingJerk({ ...MOVABLE, seed });
+      if (jerk === null) continue;
+      expect(jerk.policy.id).toBe(habitFor(seed, jerk.seat).id);
+    }
+  });
+
+  it('hands the habit to the named seat, and to nobody else', () => {
+    const start = opened(MOVABLE);
+    for (const seat of SEATS) {
+      const moved = setJerk(start, MOVABLE, seat);
+      expect(moved.jerk?.seat).toBe(seat);
+      expect([...botDeciders(MOVABLE, moved.jerk).keys()].sort((a, b) => a - b)).toEqual([
+        ...SEATS,
+      ]);
+    }
+    expect(setJerk(start, MOVABLE, null).jerk).toBeNull();
+  });
+
+  /**
+   * Re-selecting the seat that already holds the habit is not a change, so it
+   * must not spoil the round in flight. Without this, tapping the highlighted
+   * pill — the most natural thing to do to a selected control — would silently
+   * drop a round from the §7 tally.
+   */
+  it('is a no-op when the habit is already where it is being sent', () => {
+    const start = midRound(MOVABLE);
+    const seat = start.jerk?.seat ?? null;
+    expect(seat).not.toBeNull();
+    expect(setJerk(start, MOVABLE, seat)).toBe(start);
+    expect(setJerk(start, MOVABLE, seat).jerkStraddled).toBe(false);
+
+    // And likewise for "nobody", once nobody is who holds it.
+    const cleared = setJerk(start, MOVABLE, null);
+    expect(setJerk(cleared, MOVABLE, null)).toBe(cleared);
+  });
+
+  it('refuses a seat that holds no bot — that is a caller bug', () => {
+    const start = opened(MOVABLE);
+    expect(() => setJerk(start, MOVABLE, MOVABLE.playerSeat)).toThrow();
+    expect(() => setJerk(start, MOVABLE, 0)).toThrow();
+  });
+
+  it('moves no card', () => {
+    const start = opened(MOVABLE);
+    for (const seat of [...SEATS, null]) {
+      const moved = setJerk(start, MOVABLE, seat);
+      expect(moved.session.state.shoe.cards).toEqual(start.session.state.shoe.cards);
+      expect(moved.session.state.shoeSeed).toBe(start.session.state.shoeSeed);
+      expect(moved.felt).toBe(start.felt);
+      expect(moved.log).toBe(start.log);
+    }
+  });
+
+  it('actually changes how the table plays', () => {
+    // Behavioural, not structural: same seed, same taps, a different bad seat,
+    // and the streams must diverge. A `setJerk` that updated a label and left
+    // the deciders alone would pass every assertion above this one.
+    function streamWith(seat: number | null): readonly GameEvent[] {
+      let state = setJerk(opened(LOUD), LOUD, seat);
+      for (let i = 0; i < 200; i += 1) {
+        if (state.felt.roundNumber > 4) break;
+        state = drain(submit(state, LOUD, botDeciders(LOUD, state.jerk)));
+      }
+      return state.log;
+    }
+    const atTwo = streamWith(2);
+    expect(atTwo).not.toEqual(streamWith(4));
+    expect(atTwo).not.toEqual(streamWith(null));
+  });
+
+  it('attributes a round played wholly under one assignment to that assignment', () => {
+    // A change at a bet prompt costs nothing: no cards are out, so nothing can
+    // have been straddled and the round that follows is attributed normally.
+    const start = opened(MOVABLE);
+    expect(start.prompt.kind).toBe('bet');
+
+    const moved = setJerk(start, MOVABLE, 4);
+    expect(moved.jerkStraddled).toBe(false);
+
+    const queued = untilRoundQueued(moved, MOVABLE);
+    expect(queued.unshownRounds[0]?.jerk?.seat).toBe(4);
+  });
+
+  /**
+   * The load-bearing one. Mid-round, the bots before the player acted under one
+   * assignment and those after it under another, so no single `correctedSeat`
+   * yields an honest comparison.
+   */
+  it('drops a round that straddled a change, rather than misattributing it', () => {
+    const start = midRound(MOVABLE);
+    const moved = setJerk(start, MOVABLE, start.jerk?.seat === 2 ? 4 : 2);
+    expect(moved.jerkStraddled).toBe(true);
+
+    const queued = untilRoundQueued(moved, MOVABLE);
+    // Stamped `null`: no honest comparison exists for this one.
+    expect(queued.unshownRounds[0]?.jerk).toBeNull();
+    // And spent, so the *next* round is attributed normally again.
+    expect(queued.jerkStraddled).toBe(false);
+  });
+
+  /**
+   * The flag must survive the decisions between the change and the end of the
+   * round. Clearing it on the next tap — an advance that completes no round and
+   * so has nothing to mark — would let it expire unused and the straddled round
+   * be stamped with the current assignment after all.
+   */
+  it('keeps the round marked across the taps that finish it', () => {
+    // The *other* seat: re-selecting the seat already holding the habit changes
+    // nothing, so `setJerk` returns the state untouched and spoils no round.
+    const start = midRound(MOVABLE);
+    let state = setJerk(start, MOVABLE, start.jerk?.seat === 2 ? 4 : 2);
+    expect(state.jerkStraddled).toBe(true);
+
+    for (let i = 0; i < 200; i += 1) {
+      const submitted = submit(state, MOVABLE, botDeciders(MOVABLE, state.jerk));
+      if (submitted.unshownRounds.length > 0) {
+        expect(submitted.unshownRounds[0]?.jerk).toBeNull();
+        return;
+      }
+      // Still in the same round, so the mark must still be there.
+      expect(submitted.jerkStraddled).toBe(true);
+      state = drain(submitted);
+    }
+    throw new Error('no round completed within 200 submits');
+  });
+
+  it('adds nothing to the tally for a straddled round, and does not strand it', () => {
+    const start = midRound(MOVABLE);
+    const moved = setJerk(start, MOVABLE, start.jerk?.seat === 2 ? 4 : 2);
+    const queued = untilRoundQueued(moved, MOVABLE);
+
+    const before = counted(queued.jerkTally);
+    const drawn = drain(queued);
+    expect(counted(drawn.jerkTally)).toBe(before);
+    // Spent, not stranded: a queue that kept it would let a later round match
+    // the wrong recording forever after.
+    expect(drawn.unshownRounds).toHaveLength(0);
+  });
+
+  /** A state with cards out and the player on the clock. */
+  function midRound(config: TableConfig): TableState {
+    let state = drain(openTableState(config, openingDeciders(config)));
+    for (let i = 0; i < 60; i += 1) {
+      if (state.prompt.kind === 'action') return state;
+      state = drain(submit(state, config, botDeciders(config, state.jerk)));
+    }
+    throw new Error('no action prompt within 60 submits');
+  }
+
+  function counted(t: TableState['jerkTally']): number {
+    return t.helped + t.hurt + t.unchanged;
+  }
 });
