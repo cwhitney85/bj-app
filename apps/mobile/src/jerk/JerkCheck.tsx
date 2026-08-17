@@ -26,16 +26,21 @@
 import type { Counterfactual, JerkTally } from '@bj/engine';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { seatName } from '../table/felt/seatArc';
 import type { JerkCheck as Check } from '../table/tableState';
 
 export function JerkCheckCard({
   check,
   tally,
+  seatCount,
   onCheck,
   onDismiss,
 }: {
   readonly check: Check;
   readonly tally: JerkTally;
+  /** For naming the seat. See `seatName` — this card was the third place the
+   *  app numbered a chair, and the only one doing it from zero. */
+  readonly seatCount: number;
   readonly onCheck: () => void;
   readonly onDismiss: () => void;
 }) {
@@ -61,8 +66,12 @@ export function JerkCheckCard({
 
   return (
     <View style={styles.card}>
+      {/* `seatName`, not `Seat ${n}`: this printed the raw engine index, so the
+          card said "Seat 6" for the chair the picker and the felt both called
+          seat 7 — and for the one seat SPEC §7 is actually an argument about it
+          now says "Third base", which is the name the argument is conducted in. */}
       <Text style={styles.who}>
-        Seat {result.correctedSeat} · {policy.label}
+        {seatName(result.correctedSeat, seatCount, false)} · {policy.label}
       </Text>
       <Text style={styles.habit}>{policy.description}</Text>
 

@@ -7,7 +7,7 @@
  * queue drains on a timer, and `showEvents` is the only bridge between them.
  */
 
-import type { Action, CoachSettings, SessionReport } from '@bj/engine';
+import type { Action, CoachSettings, RuleSet, SessionReport } from '@bj/engine';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -40,6 +40,19 @@ export type Table = TableState & {
   /** The felt has caught up, so the player may act. */
   readonly caughtUp: boolean;
   readonly playerSeat: number;
+  /**
+   * The rules this table is dealt under — for what the felt has printed on it
+   * and for the discard tray's depth.
+   *
+   * Read off `session.state`, which every other reader in the app is forbidden
+   * (M4 decision 34: the state is the *future*, the felt is what has been
+   * drawn). It is safe for exactly one reason, and only this field: a rule set
+   * is table setup fixed before a card is dealt, so it is identical in the state
+   * and on the felt at every instant and cannot run ahead of anything. Surfaced
+   * here rather than read in a component so that "screens never touch
+   * `session.state`" stays a rule with no exceptions in it.
+   */
+  readonly rules: RuleSet;
   /** What the hint layer should draw, resolved against the current mode. */
   readonly hint: Hint | null;
   /** The mode has a hint the player has not asked for — draw the button. */
@@ -115,6 +128,7 @@ export function useTable(config: TableConfig = DEFAULT_CONFIG, hintMode: HintMod
     ...state,
     caughtUp: state.pending.length === 0,
     playerSeat: state.session.playerSeat,
+    rules: state.session.state.rules,
     hint: hint(state, hintMode),
     hintAvailable: hintAvailable(state, hintMode),
     report,

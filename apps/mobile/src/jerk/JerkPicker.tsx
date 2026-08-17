@@ -24,6 +24,7 @@
 import { JERK_POLICIES, type JerkAssignment } from '@bj/engine';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { seatName } from '../table/felt/seatArc';
 import { Button } from '../ui/Button';
 import { C } from '../ui/theme';
 
@@ -52,10 +53,13 @@ if (MISSING.length > 0) {
 export function JerkPicker({
   botSeats,
   jerk,
+  seatCount,
   onChange,
 }: {
   readonly botSeats: readonly number[];
   readonly jerk: JerkAssignment | null;
+  /** For naming the seats. `seatName` is the app's one rule for that. */
+  readonly seatCount: number;
   readonly onChange: (seat: number | null) => void;
 }) {
   // Nobody to give the habit to. An empty picker would be a control that cannot
@@ -76,8 +80,10 @@ export function JerkPicker({
           <Button
             key={seat}
             variant="pill"
-            /* Seats are numbered 1–7 for the player and 0–6 everywhere else. */
-            label={`Seat ${seat + 1}`}
+            /* `seatName` owns the 0-based-engine to 1-based-player translation,
+               and names the two seats SPEC §7 argues about. Three files were
+               numbering chairs independently and one of them was off by one. */
+            label={seatName(seat, seatCount, false)}
             selected={jerk?.seat === seat}
             onPress={() => onChange(seat)}
           />
@@ -86,7 +92,7 @@ export function JerkPicker({
       <Text style={styles.caption}>
         {jerk === null
           ? 'Everyone is playing the book. Hand the habit to a seat to see what it costs you.'
-          : `Seat ${jerk.seat + 1} ${HABIT[jerk.policy.id]}. Every round is replayed with that seat playing correctly.`}
+          : `${seatName(jerk.seat, seatCount, false)} ${HABIT[jerk.policy.id]}. Every round is replayed with that seat playing correctly.`}
       </Text>
     </View>
   );

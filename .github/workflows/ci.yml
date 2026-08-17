@@ -25,6 +25,21 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  bundle:
+    # The only check that can see a Metro fault. `npm run typecheck` covers the
+    # mobile workspace, but `tsc` cannot see a module resolution rule or a
+    # directory convention — and both have already bitten in a tree that
+    # typechecked clean (PLAN decisions 59 and 84). Roughly five seconds.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
   simulation:
     # 10 million hands of perfect basic strategy; asserts the house edge lands
     # in 0.35%-0.55%. Roughly three minutes, so not on every push.
