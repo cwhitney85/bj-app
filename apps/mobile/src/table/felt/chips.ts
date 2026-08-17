@@ -4,31 +4,50 @@
  * SPEC §10 names four denominations and no others: $5, $25, $100, $500. That is
  * an art-pipeline decision, and it has a consequence this module refuses to hide
  * — **not every amount the engine can produce is expressible in them.** Insurance
- * is half a base bet, so a $5 bet insures for $2.50, and a natural pays $12.50 on
- * a $5 stake (M1 decision 3: nothing is rounded).
+ * is half a base bet, so a $5 bet insures for $2.50, and nothing is rounded
+ * anywhere (M1 decision 3).
  *
  * So `chipsFor` returns what the stack really is *plus* what is left over, and
  * the caller prints the remainder as a number. The alternatives were both worse:
- * rounding would draw chips that add up to a different bet than the one placed,
+ * rounding would draw chips adding up to a different bet than the one placed,
  * and inventing a $1 chip would put a denomination on the felt that the art
  * direction does not have.
+ *
+ * **Everything here is integer cents (money.ts), and that is why this file no
+ * longer carries a rounding helper.** It used to: money was held in doubles, so
+ * `12.5 - 2 * 5` came out as `2.4999999999999996` and every subtraction in the
+ * decomposition had to be pushed back onto a cent boundary by hand. That helper
+ * was rounding sneaking into the one engine that promised not to round, and it
+ * is gone rather than improved — the loop below is exact integer arithmetic and
+ * the conservation test now holds by construction rather than by tolerance.
  */
 
-export type ChipDenomination = 500 | 100 | 25 | 5;
+import { DOLLAR, type Cents } from '@bj/engine';
+
+/** A chip's face value, in cents. */
+export type ChipDenomination = Cents;
 
 /** Largest first, which is also bottom-of-stack first. */
-export const CHIP_DENOMINATIONS: readonly ChipDenomination[] = [500, 100, 25, 5];
+export const CHIP_DENOMINATIONS: readonly ChipDenomination[] = [
+  500 * DOLLAR,
+  100 * DOLLAR,
+  25 * DOLLAR,
+  5 * DOLLAR,
+];
+
+/** The smallest chip on this table. Amounts below it have no chip at all. */
+export const SMALLEST_CHIP: ChipDenomination = 5 * DOLLAR;
 
 /**
- * Standard casino colours. Named here rather than in `theme.ts` because they are
- * not the app's palette — they are a fact about what a $25 chip looks like, and
- * a player who has seen a real table already knows them.
+ * Standard casino colours, keyed by face value in cents. Named here rather than
+ * in `theme.ts` because they are not the app's palette — they are a fact about
+ * what a $25 chip looks like, and a player who has seen a real table knows them.
  */
 export const CHIP_COLORS: Record<ChipDenomination, { readonly face: string; readonly edge: string }> = {
-  500: { face: '#5b3a86', edge: '#e6dcf2' },
-  100: { face: '#23272b', edge: '#d6dade' },
-  25: { face: '#1f7a4d', edge: '#dff0e6' },
-  5: { face: '#a8232f', edge: '#f4dcdf' },
+  [500 * DOLLAR]: { face: '#5b3a86', edge: '#e6dcf2' },
+  [100 * DOLLAR]: { face: '#23272b', edge: '#d6dade' },
+  [25 * DOLLAR]: { face: '#1f7a4d', edge: '#dff0e6' },
+  [5 * DOLLAR]: { face: '#a8232f', edge: '#f4dcdf' },
 };
 
 /** One denomination and how many of it the stack holds. */
@@ -41,45 +60,44 @@ export type ChipStack = {
   /** Largest denomination first. Denominations with a count of zero are omitted. */
   readonly runs: readonly ChipRun[];
   /**
-   * What no chip can express, in dollars: always less than the smallest
-   * denomination, and always zero for a whole bet at this table's $5 minimum.
-   * A caller that ignores this is drawing a stack worth less than the bet.
+   * What no chip can express, in cents: always less than the smallest
+   * denomination. A caller that ignores this is drawing a stack worth less than
+   * the bet.
    */
-  readonly remainder: number;
+  readonly remainder: Cents;
 };
 
 /**
  * Break an amount into chips, largest denomination first.
  *
- * Precondition (a caller bug, and thrown): `amount >= 0`. A negative bet is not
- * a stack of chips owed; it is a mistake upstream, and settling it silently here
- * would draw a pile where a seat has nothing on the felt.
+ * Precondition (a caller bug, and thrown): `amount` is a non-negative whole
+ * number of cents. A negative bet is not a stack of chips owed; a fractional one
+ * is money the engine cannot have produced. Settling either silently here would
+ * draw a pile where a seat has nothing on the felt.
  *
  * Postconditions, asserted in `test/chips.test.ts`:
- * - the runs sum, with `remainder`, to exactly `amount`;
- * - `0 <= remainder < 5`, the smallest denomination;
+ * - the runs sum, with `remainder`, to exactly `amount` — **exactly, not within
+ *   a tolerance**, which is what integer cents bought;
+ * - `0 <= remainder < SMALLEST_CHIP`;
  * - runs are in strictly descending denomination order and never have a count of
  *   zero;
  * - greedy is minimal here, so no stack is taller than it has to be — every
  *   denomination divides the next one up, which is what makes that true.
- *
- * The floating-point rounding is deliberate and load-bearing. Money in this
- * engine is exact but not integral, and `12.5 - 2 * 5` in binary floating point
- * is `2.4999999999999996` — which would render a $2.50 remainder as `$2.50`
- * anyway and then fail an exact-sum test for a reason that has nothing to do
- * with chips. Cents are the smallest unit any of this deals in.
  */
-export function chipsFor(amount: number): ChipStack {
+export function chipsFor(amount: Cents): ChipStack {
   if (amount < 0) throw new Error(`chipsFor: an amount cannot be negative, got ${amount}`);
+  if (!Number.isInteger(amount)) {
+    throw new Error(`chipsFor: ${amount} is not a whole number of cents`);
+  }
 
   const runs: ChipRun[] = [];
-  let left = cents(amount);
+  let left = amount;
 
   for (const denomination of CHIP_DENOMINATIONS) {
     const count = Math.floor(left / denomination);
     if (count > 0) {
       runs.push({ denomination, count });
-      left = cents(left - count * denomination);
+      left -= count * denomination;
     }
   }
 
@@ -89,8 +107,4 @@ export function chipsFor(amount: number): ChipStack {
 /** Total chips in a stack — what the renderer needs to know before it draws one. */
 export function chipCount(stack: ChipStack): number {
   return stack.runs.reduce((total, run) => total + run.count, 0);
-}
-
-function cents(value: number): number {
-  return Math.round(value * 100) / 100;
 }

@@ -24,7 +24,7 @@
  * session state rather than seating.
  */
 
-import { PURE_PLAY, VEGAS_STRIP, type CoachSettings } from '@bj/engine';
+import { DOLLAR, type Cents, PURE_PLAY, VEGAS_STRIP, type CoachSettings } from '@bj/engine';
 
 import type { TableConfig } from '../table/tableState';
 
@@ -42,10 +42,10 @@ export const MAX_BOTS = SEAT_COUNT - 1;
 /** An empty table with nobody seated. The screen's starting point. */
 export const EMPTY_DRAFT: SeatDraft = { playerSeat: null, botSeats: [] };
 
-/** Play money, and the same for everyone at the table. */
-const STARTING_BANKROLL = 500;
-/** Bots flat-bet. Varying it is a bet-spread question, and SPEC §13 defers those. */
-const BOT_BET = 25;
+/** Play money, and the same for everyone at the table. $500, in cents (money.ts). */
+const STARTING_BANKROLL: Cents = 500 * DOLLAR;
+/** Bots flat-bet $25. Varying it is a bet-spread question, and SPEC §13 defers those. */
+const BOT_BET: Cents = 25 * DOLLAR;
 
 export function isSeat(index: number): boolean {
   return Number.isInteger(index) && index >= 0 && index < SEAT_COUNT;

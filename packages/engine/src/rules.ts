@@ -5,6 +5,8 @@
  * never drift apart.
  */
 
+import type { Cents } from './money.js';
+
 export type RuleSet = {
   readonly id: string;
   readonly label: string;
@@ -34,8 +36,16 @@ export type RuleSet = {
   readonly insuranceOffered: boolean;
   /** Insurance pays 2:1 on a half-bet stake. */
   readonly insurancePayout: readonly [number, number];
-  readonly minBet: number;
-  readonly maxBet: number;
+  /**
+   * Table limits, in cents (money.ts). `$5 minimum` is `500`.
+   *
+   * A rule set is also the one place a payout ratio is declared, and both of
+   * this engine's halve a stake — 3:2 and insurance's half-bet. That is what
+   * `PLAYABLE_BET` is derived from, so a rule set introducing a ratio with an
+   * odd denominator (6:5, say) must revisit it.
+   */
+  readonly minBet: Cents;
+  readonly maxBet: Cents;
   readonly seatCount: number;
 };
 
@@ -54,8 +64,8 @@ export const VEGAS_STRIP: RuleSet = {
   surrender: false,
   insuranceOffered: true,
   insurancePayout: [2, 1],
-  minBet: 5,
-  maxBet: 500,
+  minBet: 500,
+  maxBet: 50_000,
   seatCount: 7,
 };
 

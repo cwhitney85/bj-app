@@ -29,7 +29,7 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BANKROLL = 100_000;
+const BANKROLL = 10_000_000;
 
 type SeatSpec = 'player' | 'empty' | BotPolicy;
 
@@ -87,14 +87,14 @@ describe('playRound leaves the table ready for the next round', () => {
     expect(start.phase).toBe('idle');
     expect(start.roundNumber).toBe(0);
 
-    const result = playRound(start, deciders([[0, flat(PERFECT_POLICY, 10)]]));
+    const result = playRound(start, deciders([[0, flat(PERFECT_POLICY, 1000)]]));
     expect(result.roundNumber).toBe(1);
     expect(result.state.phase).toBe('betting');
     expect(result.state.roundNumber).toBe(2);
   });
 
   it('clears the table so the caller can loop without a bookkeeping step', () => {
-    const result = playRound(game(2, [PERFECT_POLICY]), deciders([[0, flat(PERFECT_POLICY, 10)]]));
+    const result = playRound(game(2, [PERFECT_POLICY]), deciders([[0, flat(PERFECT_POLICY, 1000)]]));
     const seat = seatAt(result.state, 0);
     expect(seat.hands).toHaveLength(0);
     expect(seat.baseBet).toBe(0);
@@ -121,8 +121,8 @@ describe('every round is numbered, and numbered exactly once', () => {
   it('increments the round number across many consecutive rounds', () => {
     let state = game(3, [PERFECT_POLICY, PERFECT_POLICY]);
     const bets = deciders([
-      [0, flat(PERFECT_POLICY, 10)],
-      [1, flat(PERFECT_POLICY, 10)],
+      [0, flat(PERFECT_POLICY, 1000)],
+      [1, flat(PERFECT_POLICY, 1000)],
     ]);
 
     const played: number[] = [];
@@ -139,7 +139,7 @@ describe('every round is numbered, and numbered exactly once', () => {
 
   it('emits exactly one RoundStarted per round, carrying that round’s number', () => {
     const state = game(4, [PERFECT_POLICY, PERFECT_POLICY, PERFECT_POLICY]);
-    const bets = deciders([0, 1, 2].map((seat) => [seat, flat(PERFECT_POLICY, 10)] as const));
+    const bets = deciders([0, 1, 2].map((seat) => [seat, flat(PERFECT_POLICY, 1000)] as const));
 
     const { events } = playRounds(state, bets, 80);
     const started = eventsOfType(events, 'RoundStarted');
@@ -157,7 +157,7 @@ describe('every round is numbered, and numbered exactly once', () => {
   it('numbers rounds strictly in order with no repeats and no gaps', () => {
     const { events } = playRounds(
       game(5, [PERFECT_POLICY]),
-      deciders([[0, flat(PERFECT_POLICY, 5)]]),
+      deciders([[0, flat(PERFECT_POLICY, 500)]]),
       200,
     );
     const numbers = eventsOfType(events, 'RoundStarted').map((event) => event.roundNumber);
@@ -173,7 +173,7 @@ describe('every round is numbered, and numbered exactly once', () => {
 describe('the phase cycle returns through idle, which is where a round begins', () => {
   it('goes cleanup → idle → betting on an ordinary round', () => {
     const start = game(6, [PERFECT_POLICY]);
-    const first = playRound(start, deciders([[0, flat(PERFECT_POLICY, 10)]]));
+    const first = playRound(start, deciders([[0, flat(PERFECT_POLICY, 1000)]]));
     const trail = phaseTrail(first.events);
 
     expect(trail[0]).toBe('betting'); // idle → betting, i.e. startRound
@@ -188,7 +188,7 @@ describe('the phase cycle returns through idle, which is where a round begins', 
     // Long enough to exhaust 75% of a six-deck shoe at least once.
     const { events } = playRounds(
       game(7, [PERFECT_POLICY, PERFECT_POLICY, PERFECT_POLICY]),
-      deciders([0, 1, 2].map((seat) => [seat, flat(PERFECT_POLICY, 5)] as const)),
+      deciders([0, 1, 2].map((seat) => [seat, flat(PERFECT_POLICY, 500)] as const)),
       120,
     );
 
@@ -208,7 +208,7 @@ describe('the phase cycle returns through idle, which is where a round begins', 
   it('never opens betting from anywhere but idle', () => {
     const { events } = playRounds(
       game(8, [PERFECT_POLICY, PERFECT_POLICY]),
-      deciders([0, 1].map((seat) => [seat, flat(PERFECT_POLICY, 5)] as const)),
+      deciders([0, 1].map((seat) => [seat, flat(PERFECT_POLICY, 500)] as const)),
       120,
     );
     for (const event of eventsOfType(events, 'PhaseChanged')) {
@@ -222,7 +222,7 @@ describe('the phase cycle returns through idle, which is where a round begins', 
 describe('playRounds', () => {
   it('carries the round count across a shuffle', () => {
     const start = game(9, [PERFECT_POLICY, PERFECT_POLICY, PERFECT_POLICY, PERFECT_POLICY]);
-    const bets = deciders([0, 1, 2, 3].map((seat) => [seat, flat(PERFECT_POLICY, 5)] as const));
+    const bets = deciders([0, 1, 2, 3].map((seat) => [seat, flat(PERFECT_POLICY, 500)] as const));
     const { state, events } = playRounds(start, bets, 150);
 
     expect(eventsOfType(events, 'ShuffleStarted').length).toBeGreaterThan(0);
@@ -237,7 +237,7 @@ describe('playRounds', () => {
   });
 
   it('accumulates every round’s events in order', () => {
-    const bets = deciders([[0, flat(PERFECT_POLICY, 10)]]);
+    const bets = deciders([[0, flat(PERFECT_POLICY, 1000)]]);
     const batched = playRounds(game(10, [PERFECT_POLICY]), bets, 5);
 
     let state = game(10, [PERFECT_POLICY]);
@@ -253,7 +253,7 @@ describe('playRounds', () => {
   });
 
   it('rejects a round count that is not a positive integer', () => {
-    const bets = deciders([[0, flat(PERFECT_POLICY, 10)]]);
+    const bets = deciders([[0, flat(PERFECT_POLICY, 1000)]]);
     for (const rounds of [0, -1, 1.5, Number.NaN]) {
       expect(() => playRounds(game(11, [PERFECT_POLICY]), bets, rounds)).toThrow(
         /positive integer/,
@@ -267,14 +267,14 @@ describe('playRounds', () => {
 describe('playRound refuses a table it cannot drive', () => {
   it('throws naming every occupied seat with no decider', () => {
     const start = game(12, [PERFECT_POLICY, PERFECT_POLICY, 'player']);
-    expect(() => playRound(start, deciders([[0, flat(PERFECT_POLICY, 10)]]))).toThrow(
+    expect(() => playRound(start, deciders([[0, flat(PERFECT_POLICY, 1000)]]))).toThrow(
       /no decider for occupied seat\(s\) 1, 2/,
     );
   });
 
   it('does not require a decider for an empty seat', () => {
     const start = game(13, ['empty', PERFECT_POLICY]);
-    const result = playRound(start, deciders([[1, flat(PERFECT_POLICY, 10)]]));
+    const result = playRound(start, deciders([[1, flat(PERFECT_POLICY, 1000)]]));
     expect(result.roundNumber).toBe(1);
     expect(eventsOfType(result.events, 'CardDealt').some((event) => event.seat === 1)).toBe(true);
   });
@@ -284,8 +284,8 @@ describe('playRound refuses a table it cannot drive', () => {
     // `advanceToBetting` would otherwise have to guess what the acting seat
     // wanted, which is precisely what round.ts refuses to do.
     const start = game(14, [PERFECT_POLICY]);
-    const bets = deciders([[0, flat(PERFECT_POLICY, 10)]]);
-    const midRound = placeBets(advanceUntilDecision(start).state, new Map([[0, 10]])).state;
+    const bets = deciders([[0, flat(PERFECT_POLICY, 1000)]]);
+    const midRound = placeBets(advanceUntilDecision(start).state, new Map([[0, 1000]])).state;
     const acting = advanceUntilDecision(midRound).state;
     expect(acting.phase).not.toBe('betting');
     expect(() => playRound(acting, bets)).toThrow(/decision is outstanding/);
@@ -308,7 +308,7 @@ describe('a seat that bets nothing sits the round out', () => {
     const result = playRound(
       start,
       deciders([
-        [0, flat(PERFECT_POLICY, 10)],
+        [0, flat(PERFECT_POLICY, 1000)],
         [1, sittingOut],
       ]),
     );
@@ -339,13 +339,13 @@ describe('a seat that bets nothing sits the round out', () => {
     const bets = collectBets(
       start,
       deciders([
-        [0, flat(PERFECT_POLICY, 25)],
+        [0, flat(PERFECT_POLICY, 2500)],
         [1, sittingOut],
         // Seat 2 is the human: the app collects the bot bets here and merges the
         // player's own bet in before calling placeBets itself.
       ]),
     );
-    expect([...bets]).toEqual([[0, 25]]);
+    expect([...bets]).toEqual([[0, 2500]]);
   });
 });
 
@@ -356,20 +356,20 @@ const ACE_UP = stack(['T', 'A', '7', '9', '5', '5', '5', '5']);
 
 describe('insurance is collapsed onto what the seat can actually afford', () => {
   it('takes insurance when the money is there', () => {
-    const start = { ...game(18, [PERFECT_POLICY], 1000), shoe: ACE_UP };
-    const result = playRound(start, deciders([[0, flat(policyById('always-insures'), 100)]]));
+    const start = { ...game(18, [PERFECT_POLICY], 100_000), shoe: ACE_UP };
+    const result = playRound(start, deciders([[0, flat(policyById('always-insures'), 10_000)]]));
     const taken = eventsOfType(result.events, 'InsuranceTaken');
     expect(taken).toHaveLength(1);
-    expect(taken[0]?.amount).toBe(50);
+    expect(taken[0]?.amount).toBe(5000);
   });
 
   it('declines it when half the base bet is more than the seat has left', () => {
-    // Bankroll 7, bet 5: after the bet is placed the seat holds 2, and
-    // insurance costs 2.50. The personality describes an intent, not a
+    // Bankroll $7, bet $5: after the bet is placed the seat holds $2, and
+    // insurance costs $2.50. The personality describes an intent, not a
     // guarantee — and `takeInsurance` in round.ts would throw rather than let a
     // seat stake money it does not have.
-    const start = { ...game(19, [PERFECT_POLICY], 7), shoe: ACE_UP };
-    const result = playRound(start, deciders([[0, flat(policyById('always-insures'), 5)]]));
+    const start = { ...game(19, [PERFECT_POLICY], 700), shoe: ACE_UP };
+    const result = playRound(start, deciders([[0, flat(policyById('always-insures'), 500)]]));
 
     expect(eventsOfType(result.events, 'InsuranceOffered')).toHaveLength(1);
     expect(eventsOfType(result.events, 'InsuranceTaken')).toHaveLength(0);
@@ -378,20 +378,20 @@ describe('insurance is collapsed onto what the seat can actually afford', () => 
   });
 
   it('declines it exactly at the boundary and takes it one dollar above', () => {
-    // Bet 10, so insurance costs 5. A bankroll of 14 leaves 4 — not enough.
-    const short = { ...game(20, [PERFECT_POLICY], 14), shoe: ACE_UP };
+    // Bet $10, so insurance costs $5. A bankroll of $14 leaves $4 — not enough.
+    const short = { ...game(20, [PERFECT_POLICY], 1400), shoe: ACE_UP };
     expect(
       eventsOfType(
-        playRound(short, deciders([[0, flat(policyById('always-insures'), 10)]])).events,
+        playRound(short, deciders([[0, flat(policyById('always-insures'), 1000)]])).events,
         'InsuranceTaken',
       ),
     ).toHaveLength(0);
 
-    // A bankroll of 15 leaves exactly 5, which covers it.
-    const exact = { ...game(20, [PERFECT_POLICY], 15), shoe: ACE_UP };
+    // A bankroll of $15 leaves exactly $5, which covers it.
+    const exact = { ...game(20, [PERFECT_POLICY], 1500), shoe: ACE_UP };
     expect(
       eventsOfType(
-        playRound(exact, deciders([[0, flat(policyById('always-insures'), 10)]])).events,
+        playRound(exact, deciders([[0, flat(policyById('always-insures'), 1000)]])).events,
         'InsuranceTaken',
       ),
     ).toHaveLength(1);
@@ -415,7 +415,7 @@ describe('money is conserved across a long session', () => {
       policyById('never-splits'),
     ];
     const start = game(21, specs);
-    const bets = deciders(specs.map((policy, i) => [i, flat(policy, 10)] as const));
+    const bets = deciders(specs.map((policy, i) => [i, flat(policy, 1000)] as const));
 
     const { state, events } = playRounds(start, bets, 400);
 
@@ -441,7 +441,7 @@ describe('money is conserved across a long session', () => {
     // were swapped. This does not.
     const specs: readonly BotPolicy[] = [PERFECT_POLICY, policyById('mimics-dealer')];
     const start = game(22, specs);
-    const bets = deciders(specs.map((policy, i) => [i, flat(policy, 10)] as const));
+    const bets = deciders(specs.map((policy, i) => [i, flat(policy, 1000)] as const));
     const { state, events } = playRounds(start, bets, 200);
 
     for (let seatIndex = 0; seatIndex < specs.length; seatIndex++) {
@@ -496,7 +496,7 @@ describe('the seat helpers the app uses to wire a table up', () => {
 
 describe('flatBettor', () => {
   it('bets the same amount every round, whatever the bankroll has done', () => {
-    const decider = flatBettor(policyById('mimics-dealer'), 25);
+    const decider = flatBettor(policyById('mimics-dealer'), 2500);
     let state = game(25, [PERFECT_POLICY]);
     const seen: number[] = [];
     for (let i = 0; i < 20; i++) {
@@ -504,13 +504,13 @@ describe('flatBettor', () => {
       seen.push(collectBets(betting, deciders([[0, decider]])).get(0) ?? 0);
       state = playRound(betting, deciders([[0, decider]])).state;
     }
-    expect(seen).toEqual(Array.from({ length: 20 }, () => 25));
+    expect(seen).toEqual(Array.from({ length: 20 }, () => 2500));
   });
 
   it('takes insurance the way its policy would, not the way the book would', () => {
-    const insurer = flatBettor(policyById('always-insures'), 100);
-    const booker = flatBettor(PERFECT_POLICY, 100);
-    const start = { ...game(26, [PERFECT_POLICY], 1000), shoe: ACE_UP };
+    const insurer = flatBettor(policyById('always-insures'), 10_000);
+    const booker = flatBettor(PERFECT_POLICY, 10_000);
+    const start = { ...game(26, [PERFECT_POLICY], 100_000), shoe: ACE_UP };
     expect(
       eventsOfType(playRound(start, deciders([[0, insurer]])).events, 'InsuranceTaken'),
     ).toHaveLength(1);
@@ -527,11 +527,11 @@ describe('flatBettor', () => {
       act: () => 'surrender',
       takeInsurance: () => false,
     };
-    const start = { ...game(27, [PERFECT_POLICY], 1000), shoe: ACE_UP };
+    const start = { ...game(27, [PERFECT_POLICY], 100_000), shoe: ACE_UP };
     const dealt = advanceUntilDecision(
-      placeBets(advanceUntilDecision(start).state, new Map([[0, 10]])).state,
+      placeBets(advanceUntilDecision(start).state, new Map([[0, 1000]])).state,
     ).state;
     const acting = advanceUntilDecision(takeInsurance(dealt, 0, false).state).state;
-    expect(() => flatBettor(broken, 10).act(actionView(acting, 0))).toThrow(/broken-bettor/);
+    expect(() => flatBettor(broken, 1000).act(actionView(acting, 0))).toThrow(/broken-bettor/);
   });
 });

@@ -19,7 +19,7 @@
  * one does.
  */
 
-import type { Action, SessionReport } from '@bj/engine';
+import { DOLLAR, type Action, type SessionReport } from '@bj/engine';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { HintCard } from '../hint/HintCard';
@@ -31,6 +31,7 @@ import { C } from '../ui/theme';
 import { Felt } from './felt/Felt';
 import type { HintMode, TableConfig } from './tableState';
 import { useTable, type Table } from './useTable';
+import { formatMoney } from '../ui/money';
 
 export function TableScreen({
   config,
@@ -126,10 +127,10 @@ function Controls({ table }: { readonly table: Table }) {
       return (
         <View style={styles.controls}>
           <Text style={styles.prompt}>Your bet</Text>
-          {[5, 25, 100].map((amount) => (
+          {[5, 25, 100].map((dollars) => dollars * DOLLAR).map((amount) => (
             <Button
               key={amount}
-              label={`$${amount}`}
+              label={formatMoney(amount)}
               disabled={amount < prompt.min || amount > prompt.max}
               onPress={() => table.placeBet(amount)}
             />
@@ -141,7 +142,7 @@ function Controls({ table }: { readonly table: Table }) {
     case 'insurance':
       return (
         <View style={styles.controls}>
-          <Text style={styles.prompt}>Insurance ${prompt.stake.toFixed(2)}?</Text>
+          <Text style={styles.prompt}>Insurance {formatMoney(prompt.stake)}?</Text>
           <Button label="No" onPress={() => table.takeInsurance(false)} variant="secondary" />
           <Button label="Yes" onPress={() => table.takeInsurance(true)} />
           <HintButton table={table} />

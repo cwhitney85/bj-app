@@ -33,8 +33,8 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BANKROLL = 100_000;
-const BET = 10;
+const BANKROLL = 10_000_000;
+const BET = 1000;
 const ROUNDS = 40;
 
 type SeatSpec = 'player' | 'empty' | 'bot';
@@ -298,7 +298,7 @@ describe('sessionReport', () => {
 
   it('passes the jerk tally through untouched', () => {
     const played = play(50, ['player', 'bot'], BOOK);
-    const tally: JerkTally = { helped: 7, hurt: 5, unchanged: 88, netDelta: -12.5 };
+    const tally: JerkTally = { helped: 7, hurt: 5, unchanged: 88, netDelta: -1250 };
     expect(sessionReport(logOf(played, tally)).jerk).toEqual(tally);
   });
 });
@@ -358,10 +358,10 @@ describe('mistake ranking', () => {
     const report = sessionReport({
       ...EMPTY_LOG,
       decisions: [
-        decision('CLOSEST_CALL', -0.05),
-        decision('CLOSEST_CALL', -0.05),
-        decision('CLOSEST_CALL', -0.05),
-        decision('DEALER_STRONG_MUST_IMPROVE', -4),
+        decision('CLOSEST_CALL', -5),
+        decision('CLOSEST_CALL', -5),
+        decision('CLOSEST_CALL', -5),
+        decision('DEALER_STRONG_MUST_IMPROVE', -400),
       ],
     });
 
@@ -369,7 +369,7 @@ describe('mistake ranking', () => {
       'DEALER_STRONG_MUST_IMPROVE',
       'CLOSEST_CALL',
     ]);
-    expect(report.mistakes[0]?.evLost).toBeCloseTo(4, 9);
+    expect(report.mistakes[0]?.evLost).toBeCloseTo(400, 9);
     expect(report.mistakes[1]?.count).toBe(3);
   });
 
@@ -377,14 +377,14 @@ describe('mistake ranking', () => {
     const report = sessionReport({
       ...EMPTY_LOG,
       decisions: [
-        decision('NEVER_SPLIT_TENS', -1),
-        decision('ALWAYS_SPLIT_EIGHTS', -0.5),
-        decision('ALWAYS_SPLIT_EIGHTS', -0.5),
-        decision('SOFT_HAND_CANT_BUST', -1),
+        decision('NEVER_SPLIT_TENS', -100),
+        decision('ALWAYS_SPLIT_EIGHTS', -50),
+        decision('ALWAYS_SPLIT_EIGHTS', -50),
+        decision('SOFT_HAND_CANT_BUST', -100),
       ],
     });
 
-    // All three cost exactly 1.0; ALWAYS_SPLIT_EIGHTS has two, so it leads, and
+    // All three cost exactly 100; ALWAYS_SPLIT_EIGHTS has two, so it leads, and
     // the remaining pair falls back to the code itself.
     expect(report.mistakes.map((m) => m.reasonCode)).toEqual([
       'ALWAYS_SPLIT_EIGHTS',
@@ -398,7 +398,7 @@ describe('mistake ranking', () => {
       ...EMPTY_LOG,
       decisions: [
         decision('DEALER_WEAK_LET_THEM_BUST', 0, true),
-        decision('DEALER_WEAK_LET_THEM_BUST', -2),
+        decision('DEALER_WEAK_LET_THEM_BUST', -200),
       ],
     });
 
@@ -406,7 +406,7 @@ describe('mistake ranking', () => {
     expect(report.mistakes[0]).toEqual({
       reasonCode: 'DEALER_WEAK_LET_THEM_BUST',
       count: 1,
-      evLost: 2,
+      evLost: 200,
     });
   });
 
@@ -415,11 +415,11 @@ describe('mistake ranking', () => {
     // report that hid them would be lying in the app's own favour.
     const report = sessionReport({
       ...EMPTY_LOG,
-      decisions: [decision('DAMAGE_CONTROL', +0.3)],
+      decisions: [decision('DAMAGE_CONTROL', +30)],
     });
 
-    expect(report.evLost).toBeCloseTo(-0.3, 9);
-    expect(report.mistakes[0]?.evLost).toBeCloseTo(-0.3, 9);
+    expect(report.evLost).toBeCloseTo(-30, 9);
+    expect(report.mistakes[0]?.evLost).toBeCloseTo(-30, 9);
     expect(report.deviations).toBe(1);
   });
 });

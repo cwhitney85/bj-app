@@ -13,6 +13,7 @@
 
 import type { SessionReport } from '@bj/engine';
 import { StyleSheet, Text, View } from 'react-native';
+import { formatExpectation, formatSignedMoney } from '../ui/money';
 
 export function SessionTally({ report }: { readonly report: SessionReport }) {
   return (
@@ -31,7 +32,7 @@ export function SessionTally({ report }: { readonly report: SessionReport }) {
           is a sum of expected values, not of money that changed hands. */}
       <Stat
         label="Est. EV lost"
-        value={report.evLost === 0 ? '$0.00' : `$${report.evLost.toFixed(2)}`}
+        value={formatExpectation(report.evLost)}
         tone={report.evLost > 0 ? 'bad' : undefined}
       />
     </View>
@@ -58,7 +59,7 @@ function Stat({
 }
 
 function signedMoney(net: number): string {
-  return `${net < 0 ? '−' : '+'}$${Math.abs(net).toFixed(2)}`;
+  return formatSignedMoney(net);
 }
 
 function tone(net: number): 'good' | 'bad' | undefined {

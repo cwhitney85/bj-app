@@ -17,9 +17,22 @@
  * Nothing is rounded. A $5 bet at 3:2 returns $12.50, and silently rounding that
  * down would bake a fake edge into an app whose entire purpose is teaching the
  * real one.
+ *
+ * **Every amount here is an integer number of cents, and that is what makes the
+ * previous paragraph true rather than aspirational.** The first implementation
+ * held money in doubles, where `12.5 - 2 * 5` is `2.4999999999999996` — so
+ * "nothing is rounded" was honoured by the arithmetic and then quietly broken by
+ * the representation. See money.ts.
+ *
+ * Two payouts here halve the stake — surrender, and a natural at 3:2 — and they
+ * are the entire reason `PLAYABLE_BET` exists. `validateBet` refuses an odd
+ * stake, so `returnAt` and the surrender branch cannot produce a fraction of a
+ * cent. That is a precondition owed by the caller and enforced at the door, not
+ * a rounding decision taken here.
  */
 
 import type { Card } from './cards.js';
+import type { Cents } from './money.js';
 import { handTotal, isBlackjack, isBust, type Hand } from './hand.js';
 import type { RuleSet } from './rules.js';
 import { activeSeats, type RoundState, type Seat } from './state.js';
@@ -30,18 +43,18 @@ export type HandSettlement = {
   readonly seat: number;
   readonly handIndex: number;
   readonly outcome: HandOutcome;
-  /** Total wagered on this hand, including the doubled portion. */
-  readonly bet: number;
+  /** Total wagered on this hand, including the doubled portion. In cents. */
+  readonly bet: Cents;
   /** Returned to the bankroll: stake plus profit. 0 when the hand lost. */
-  readonly payout: number;
-  readonly net: number;
+  readonly payout: Cents;
+  readonly net: Cents;
 };
 
 export type InsuranceSettlement = {
   readonly seat: number;
-  readonly bet: number;
-  readonly payout: number;
-  readonly net: number;
+  readonly bet: Cents;
+  readonly payout: Cents;
+  readonly net: Cents;
 };
 
 export type RoundSettlement = {
@@ -49,10 +62,24 @@ export type RoundSettlement = {
   readonly insurance: readonly InsuranceSettlement[];
 };
 
-/** Stake plus profit at `num:den` odds — what a winning bet returns. */
-function returnAt(stake: number, odds: readonly [number, number]): number {
+/**
+ * Stake plus profit at `num:den` odds — what a winning bet returns.
+ *
+ * Precondition: `den` divides `stake * num` exactly. `PLAYABLE_BET` guarantees
+ * it for both ratios this engine ships (3:2 on an even stake, 2:1 on anything).
+ * Asserted rather than rounded: a fractional cent here means either a bet got
+ * past `validateBet` or a rule set declared a ratio nobody re-derived
+ * `PLAYABLE_BET` against — a 6:5 natural being the obvious candidate. Both are
+ * bugs upstream of this line, and rounding would hide them behind a house edge
+ * that is wrong in the fourth decimal place.
+ */
+function returnAt(stake: Cents, odds: readonly [number, number]): Cents {
   const [num, den] = odds;
-  return stake + (stake * num) / den;
+  const profit = (stake * num) / den;
+  if (!Number.isInteger(profit)) {
+    throw new Error(`returnAt: ${num}:${den} on a stake of ${stake} pays a fraction of a cent`);
+  }
+  return stake + profit;
 }
 
 /**
@@ -71,7 +98,7 @@ export function settleHand(
   seat: number,
   handIndex: number,
 ): HandSettlement {
-  const settled = (outcome: HandOutcome, payout: number): HandSettlement => ({
+  const settled = (outcome: HandOutcome, payout: Cents): HandSettlement => ({
     seat,
     handIndex,
     outcome,

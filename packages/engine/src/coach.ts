@@ -31,6 +31,7 @@
 
 import type { Composition } from './cards.js';
 import { evaluateActions, insuranceEv, type ActionEv, type EvInput } from './ev.js';
+import type { Cents } from './money.js';
 import { explain, explainInsurance, type Explanation } from './explain.js';
 import { handTotal, type Action } from './hand.js';
 import { unseenComposition, type KnownCards } from './knowledge.js';
@@ -77,8 +78,8 @@ export type ActionCoaching = {
   readonly explanation: Explanation;
   /** Exactly what `ev` was computed from. */
   readonly evInput: EvInput;
-  /** The bet on the hand being decided — what an EV difference is priced in. */
-  readonly stake: number;
+  /** The bet on the hand being decided, in cents — what an EV difference is priced in. */
+  readonly stake: Cents;
 };
 
 /**
@@ -93,8 +94,8 @@ export type InsuranceCoaching = {
   /** EV per dollar of insurance stake. */
   readonly ev: number;
   readonly explanation: Explanation;
-  /** The insurance stake in money — half the base bet under every MVP rule set. */
-  readonly stake: number;
+  /** The insurance stake in cents — half the base bet under every MVP rule set. */
+  readonly stake: Cents;
   /** That stake as a fraction of the base bet, so `ev` can be put in base-bet units. */
   readonly cost: number;
   /** The unseen cards the number was computed over. */
@@ -260,8 +261,18 @@ export type Decision = {
   readonly reasonCode: ReasonCode;
   /** Chosen minus recommended, in units of the base bet. */
   readonly evDelta: number;
-  /** `evDelta` priced at this decision's stake, in money. */
-  readonly moneyDelta: number;
+  /**
+   * `evDelta` priced at this decision's stake, in cents.
+   *
+   * **Real cents, not integer cents, and deliberately so.** Every other money
+   * figure in the engine is an integer because it is money that actually moved;
+   * this one is `evDelta × stake` — a dimensionless ratio times a number of
+   * cents — so it is an *expectation* and nobody ever paid it. Rounding it to
+   * the cent would invent precision the ratio does not have and destroy the
+   * exact-zero property `report.ts` decision 46 depends on. See money.ts for the
+   * integer/real split and why both are cents.
+   */
+  readonly moneyDelta: Cents;
 };
 
 /**

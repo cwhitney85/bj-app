@@ -26,7 +26,7 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BET = 10;
+const BET = 1000;
 
 /**
  * A five-handed table: the human at first base and four bots behind them, each
@@ -42,7 +42,7 @@ function crowdedTable(seed: number): RoundState {
         : i < 5
           ? ({ kind: 'bot', policyId: policyAt(i).id, characterId: `c${i}` } as const)
           : ({ kind: 'empty' } as const),
-    bankroll: i < 5 ? 1_000_000 : 0,
+    bankroll: i < 5 ? 100_000_000 : 0,
   }));
   return createGame({ rules: VEGAS_STRIP, seed, seats });
 }

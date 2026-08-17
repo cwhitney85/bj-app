@@ -39,7 +39,8 @@ import {
 const CONFIG: TableConfig = { ...DEFAULT_CONFIG, seed: 20260812 };
 const DECIDERS = openingDeciders(CONFIG);
 const SETTINGS = CONFIG.coachSettings;
-const BET = 5;
+/** $5, in cents (money.ts) — the table minimum. */
+const BET = 500;
 
 // --- Driving ---------------------------------------------------------------
 
@@ -302,7 +303,7 @@ describe('the retained log is what the player has been shown', () => {
     // A tap mid-draw answers a prompt about a hand not yet on the felt. It is
     // dropped, not queued: the same object comes back.
     expect(act(acted, 'hit', DECIDERS, SETTINGS)).toBe(acted);
-    expect(bet(acted, 5, DECIDERS, SETTINGS)).toBe(acted);
+    expect(bet(acted, BET, DECIDERS, SETTINGS)).toBe(acted);
   });
 
   it('reports money that agrees with the bankroll the felt is showing', () => {
@@ -316,7 +317,9 @@ describe('the retained log is what the player has been shown', () => {
     expect(seat).toBeDefined();
     if (seat === undefined) return;
 
-    expect(seat.bankroll).toBeCloseTo(CONFIG.bankroll + tally(state).net, 10);
+    // Exact, not `toBeCloseTo`: money is integer cents now, so two folds of
+    // the same stream agree on the nose or the projection is wrong (money.ts).
+    expect(seat.bankroll).toBe(CONFIG.bankroll + tally(state).net);
     expect(tally(state).roundsPlayed).toBeGreaterThan(0);
   });
 });

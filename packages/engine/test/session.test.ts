@@ -31,8 +31,8 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BANKROLL = 100_000;
-const BET = 5;
+const BANKROLL = 10_000_000;
+const BET = 500;
 
 type SeatSpec = 'player' | 'empty' | BotPolicy;
 
@@ -171,17 +171,17 @@ describe('advanceUntilPlayer', () => {
     const specs: SeatSpec[] = ['player', PERFECT_POLICY];
     const rich = advanceUntilPlayer(createSession(game(7, specs)), botDeciders(specs)).prompt;
     const poor = advanceUntilPlayer(
-      createSession(game(7, specs, 42)),
+      createSession(game(7, specs, 4200)),
       botDeciders(specs),
     ).prompt;
 
     expect(rich).toMatchObject({ kind: 'bet', min: VEGAS_STRIP.minBet, max: VEGAS_STRIP.maxBet });
-    expect(poor).toMatchObject({ kind: 'bet', min: VEGAS_STRIP.minBet, max: 42 });
+    expect(poor).toMatchObject({ kind: 'bet', min: VEGAS_STRIP.minBet, max: 4200 });
   });
 
   it('reports a bankroll below the minimum as max < min', () => {
     const specs: SeatSpec[] = ['player', PERFECT_POLICY];
-    const prompt = advanceUntilPlayer(createSession(game(7, specs, 3)), botDeciders(specs)).prompt;
+    const prompt = advanceUntilPlayer(createSession(game(7, specs, 300)), botDeciders(specs)).prompt;
     expect(prompt.kind).toBe('bet');
     if (prompt.kind !== 'bet') throw new Error('unreachable');
     expect(prompt.max).toBeLessThan(prompt.min);
@@ -415,14 +415,14 @@ describe('the player at the edges', () => {
     // Bankroll of exactly one bet: the wager is affordable, the insurance is
     // not. `submitInsurance` does not quietly decline it (unlike a bot's wish);
     // offering it was the caller's mistake and it is named as one.
-    // Seed 2 shows an ace on the first round. A bankroll of 7 covers the $5
+    // Seed 2 shows an ace on the first round. A bankroll of $7 covers the $5
     // wager and leaves $2 against a $2.50 insurance stake.
     const specs: SeatSpec[] = ['player', PERFECT_POLICY];
     const bots = botDeciders(specs);
-    const opened = advanceUntilPlayer(createSession(game(2, specs, 7)), bots);
+    const opened = advanceUntilPlayer(createSession(game(2, specs, 700)), bots);
     const step = submitBet(opened.session, BET, bots);
 
-    expect(step.prompt).toMatchObject({ kind: 'insurance', stake: 2.5 });
+    expect(step.prompt).toMatchObject({ kind: 'insurance', stake: 250 });
     expect(() => submitInsurance(step.session, true, bots)).toThrow(/cannot afford/);
     // Declining is always available, and the round carries on.
     expect(submitInsurance(step.session, false, bots).session.state.phase).not.toBe(

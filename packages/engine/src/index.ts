@@ -8,6 +8,7 @@
  */
 
 export * from './rng.js';
+export * from './money.js';
 export * from './cards.js';
 export * from './rules.js';
 export * from './hand.js';

@@ -20,6 +20,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { C } from '../ui/theme';
 import { LESSON } from './lessons';
+import { formatMoney, formatSignedMoney } from '../ui/money';
 
 export function SessionReportScreen({
   report,
@@ -204,12 +205,12 @@ function Row({
 
 /** Signed, for figures whose direction is the information. */
 function signed(amount: number): string {
-  return `${amount < 0 ? '−' : '+'}$${Math.abs(amount).toFixed(2)}`;
+  return formatSignedMoney(amount);
 }
 
 /** Unsigned, for figures that are already named as a cost. */
 function money(amount: number): string {
-  return `${amount < 0 ? '−' : ''}$${Math.abs(amount).toFixed(2)}`;
+  return formatMoney(amount);
 }
 
 function moneyTone(amount: number): 'good' | 'bad' | undefined {

@@ -43,7 +43,7 @@ function stack(ranks: readonly string[], rules: RuleSet = VEGAS_STRIP): Shoe {
   };
 }
 
-function gameWith(shoe: Shoe, seatCount = 1, bankroll = 1000): RoundState {
+function gameWith(shoe: Shoe, seatCount = 1, bankroll = 100_000): RoundState {
   const seats = Array.from({ length: VEGAS_STRIP.seatCount }, (_, i) => ({
     occupant:
       i === 0
@@ -91,7 +91,7 @@ describe('freshShoeComposition', () => {
 describe('visibleCards', () => {
   it('hides the hole card until it is revealed', () => {
     const shoe = stack(['T', '6', '8', 'K', ...Array<string>(20).fill('5')]);
-    const dealt = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const dealt = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const visible = visibleCards(dealt.state);
 
     // Player T,8 and the dealer's 6 upcard are public; the K underneath is not.
@@ -101,7 +101,7 @@ describe('visibleCards', () => {
 
   it('includes the whole dealer hand once the hole card is turned', () => {
     const shoe = stack(['T', '6', '8', 'K', '4', ...Array<string>(20).fill('5')]);
-    const dealt = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const dealt = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const stood = advanceUntilDecision(applyAction(dealt.state, 0, 'stand').state);
 
     // The dealer has revealed and played; nothing on the table is hidden now.
@@ -113,7 +113,7 @@ describe('unseenComposition', () => {
   const shoe = stack(['T', '6', '8', 'K', ...Array<string>(40).fill('5')]);
 
   it('current-round subtracts only what is face up, with no memory of the shoe', () => {
-    const dealt = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const dealt = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const comp = unseenComposition(dealt.state, 'current-round');
 
     // Baseline is a full 6-deck shoe less the three visible cards.
@@ -126,7 +126,7 @@ describe('unseenComposition', () => {
   });
 
   it('current-round is unchanged by how much of the shoe was already burned', () => {
-    const fresh = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const fresh = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const deepIn: RoundState = {
       ...fresh.state,
       shoe: { ...fresh.state.shoe, index: fresh.state.shoe.index + 100 },
@@ -139,7 +139,7 @@ describe('unseenComposition', () => {
   });
 
   it('full-shoe subtracts everything dealt but puts the hole card back', () => {
-    const dealt = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const dealt = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const comp = unseenComposition(dealt.state, 'full-shoe');
 
     // Four cards left the shoe; the hole card is one of them and is still unseen,
@@ -149,7 +149,7 @@ describe('unseenComposition', () => {
   });
 
   it('full-shoe stops adding the hole card back once it is revealed', () => {
-    const dealt = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const dealt = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const revealed: RoundState = {
       ...dealt.state,
       dealer: { ...dealt.state.dealer, holeCardRevealed: true },
@@ -159,7 +159,7 @@ describe('unseenComposition', () => {
 
   it('never returns a negative bucket in either mode', () => {
     const modes: readonly KnownCards[] = ['current-round', 'full-shoe'];
-    const dealt = startRound(gameWith(shoe, 4), new Map([[0, 10], [1, 10], [2, 10], [3, 10]]));
+    const dealt = startRound(gameWith(shoe, 4), new Map([[0, 1000], [1, 1000], [2, 1000], [3, 1000]]));
     for (const mode of modes) {
       for (const count of unseenComposition(dealt.state, mode)) {
         expect(count).toBeGreaterThanOrEqual(0);
@@ -168,7 +168,7 @@ describe('unseenComposition', () => {
   });
 
   it('excludes every card the caller can see, which is what the EV input requires', () => {
-    const dealt = startRound(gameWith(shoe, 3), new Map([[0, 10], [1, 10], [2, 10]]));
+    const dealt = startRound(gameWith(shoe, 3), new Map([[0, 1000], [1, 1000], [2, 1000]]));
     const comp = unseenComposition(dealt.state, 'current-round');
     const seen = compositionOf(visibleCards(dealt.state));
     expect(total(comp) + total(seen)).toBe(312);

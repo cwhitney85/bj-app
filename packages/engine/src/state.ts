@@ -10,6 +10,7 @@
 
 import type { Card, Shoe } from './cards.js';
 import type { Hand } from './hand.js';
+import type { Cents } from './money.js';
 import type { RuleSet } from './rules.js';
 
 export type Phase =
@@ -32,14 +33,14 @@ export type SeatOccupant =
 export type Seat = {
   readonly index: number;
   readonly occupant: SeatOccupant;
-  readonly bankroll: number;
-  /** The bet placed this round, before any doubling or splitting. */
-  readonly baseBet: number;
+  readonly bankroll: Cents;
+  /** The bet placed this round, before any doubling or splitting. In cents. */
+  readonly baseBet: Cents;
   readonly hands: readonly Hand[];
   /** Which of `hands` is currently acting, or -1 when the seat is not acting. */
   readonly activeHandIndex: number;
-  /** Half the base bet if insurance was taken, else 0. */
-  readonly insuranceBet: number;
+  /** Half the base bet if insurance was taken, else 0. In cents. */
+  readonly insuranceBet: Cents;
   /** Set once the seat has answered the insurance offer this round. */
   readonly insuranceResolved: boolean;
 };

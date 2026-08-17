@@ -33,11 +33,11 @@ describe('simulate', () => {
   });
 
   it('keeps its bookkeeping consistent', () => {
-    const stats = simulate({ hands: HANDS, seed: SEED, bet: 25 });
+    const stats = simulate({ hands: HANDS, seed: SEED, bet: 2500 });
 
     expect(stats.hands).toBe(HANDS);
     expect(stats.rounds).toBe(HANDS);
-    expect(stats.wagered).toBe(HANDS * 25);
+    expect(stats.wagered).toBe(HANDS * 2500);
 
     // Splitting creates hands and adds stake; doubling adds stake only. Both
     // happen often enough at this sample size that these are strict.

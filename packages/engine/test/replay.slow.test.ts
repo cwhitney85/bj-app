@@ -59,7 +59,7 @@ function envNumber(name: string, fallback: number): number {
 /** Scales every sample below, so a shortened run stays proportioned. */
 const SCALE = envNumber('JERK_SCALE', 1);
 const SEED = envNumber('JERK_SEED', 20260807);
-const BET = 5;
+const BET = 500;
 
 const scaled = (rounds: number): number => Math.max(1000, Math.round(rounds * SCALE));
 
@@ -67,10 +67,10 @@ function game(seed: number, specs: readonly (BotPolicy | 'player' | 'empty')[]):
   const seats: SeatConfig[] = Array.from({ length: VEGAS_STRIP.seatCount }, (_, i) => {
     const spec = specs[i] ?? 'empty';
     if (spec === 'empty') return { occupant: { kind: 'empty' } as const, bankroll: 0 };
-    if (spec === 'player') return { occupant: { kind: 'player' } as const, bankroll: 10_000_000 };
+    if (spec === 'player') return { occupant: { kind: 'player' } as const, bankroll: 1_000_000_000 };
     return {
       occupant: { kind: 'bot', policyId: spec.id, characterId: `c${i}` } as const,
-      bankroll: 10_000_000,
+      bankroll: 1_000_000_000,
     };
   });
   return createGame({ rules: VEGAS_STRIP, seed, seats });
@@ -87,7 +87,7 @@ function netOf(events: readonly GameEvent[]): number {
 // --- 1. Every bad habit is bad ---------------------------------------------
 
 /**
- * The cost of one habit to its own seat, per round, in dollars.
+ * The cost of one habit to its own seat, per round, in cents.
  *
  * Every round is played twice from the identical starting state: once as the
  * habit plays it, once with that seat playing the book. The difference is

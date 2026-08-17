@@ -33,8 +33,8 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BANKROLL = 100_000;
-const BET = 5;
+const BANKROLL = 10_000_000;
+const BET = 500;
 
 type SeatSpec = 'player' | 'empty' | BotPolicy;
 
@@ -500,8 +500,8 @@ describe('the hole card', () => {
 // --- The fold itself -------------------------------------------------------
 
 const SEATS: readonly SeatSetup[] = [
-  { index: 0, occupant: { kind: 'player' }, bankroll: 100 },
-  { index: 1, occupant: { kind: 'bot', policyId: 'perfect', characterId: 'c1' }, bankroll: 100 },
+  { index: 0, occupant: { kind: 'player' }, bankroll: 10_000 },
+  { index: 1, occupant: { kind: 'bot', policyId: 'perfect', characterId: 'c1' }, bankroll: 10_000 },
 ];
 
 let cardSerial = 0;
@@ -527,24 +527,24 @@ describe('showEvents', () => {
     const frozen = JSON.parse(JSON.stringify(before)) as unknown;
     showEvents(before, [
       { type: 'RoundStarted', roundNumber: 1, shoeIndex: 0 },
-      { type: 'BetPlaced', seat: 0, amount: 5, bankroll: 95 },
+      { type: 'BetPlaced', seat: 0, amount: 500, bankroll: 9500 },
     ]);
     expect(before).toEqual(frozen);
   });
 
   it('inserts a split hand after the one it came from, shifting the rest up', () => {
     const table = showEvents(openTable(SEATS), [
-      { type: 'BetPlaced', seat: 0, amount: 5, bankroll: 95 },
+      { type: 'BetPlaced', seat: 0, amount: 500, bankroll: 9500 },
       dealt(0, 0, card('8'), 8, false),
       dealt(0, 0, card('8'), 16, false),
-      { type: 'HandSplit', ref: { seat: 0, handIndex: 0 }, newHandIndex: 1, bet: 5 },
+      { type: 'HandSplit', ref: { seat: 0, handIndex: 0 }, newHandIndex: 1, bet: 500 },
       dealt(0, 0, card('3'), 11, false),
-      { type: 'HandSplit', ref: { seat: 0, handIndex: 0 }, newHandIndex: 1, bet: 5 },
+      { type: 'HandSplit', ref: { seat: 0, handIndex: 0 }, newHandIndex: 1, bet: 500 },
     ]);
 
     const hands = table.seats[0]?.hands ?? [];
     expect(hands.map((hand) => hand.cards.map((c) => c.rank))).toEqual([['8'], ['3'], ['8']]);
-    expect(hands.every((hand) => hand.fromSplit && hand.bet === 5)).toBe(true);
+    expect(hands.every((hand) => hand.fromSplit && hand.bet === 500)).toBe(true);
     // A one-card hand has no total any event has reported, and the projection is
     // not allowed to work one out.
     expect(hands.map((hand) => hand.total)).toEqual([null, null, null]);
@@ -552,13 +552,13 @@ describe('showEvents', () => {
 
   it('clears the felt on the way out of cleanup, keeping the last action', () => {
     const played = showEvents(openTable(SEATS), [
-      { type: 'BetPlaced', seat: 0, amount: 5, bankroll: 95 },
+      { type: 'BetPlaced', seat: 0, amount: 500, bankroll: 9500 },
       dealt(0, 0, card('T'), 10, false),
       dealt(0, 0, card('9'), 19, false),
       { type: 'PlayerActed', ref: { seat: 0, handIndex: 0 }, action: 'stand' },
       { type: 'HandStood', ref: { seat: 0, handIndex: 0 }, total: 19, soft: false },
-      { type: 'HandSettled', ref: { seat: 0, handIndex: 0 }, outcome: 'win', bet: 5, payout: 10, net: 5 },
-      { type: 'BankrollChanged', seat: 0, bankroll: 105, delta: 10 },
+      { type: 'HandSettled', ref: { seat: 0, handIndex: 0 }, outcome: 'win', bet: 500, payout: 1000, net: 500 },
+      { type: 'BankrollChanged', seat: 0, bankroll: 10_500, delta: 1000 },
       { type: 'PhaseChanged', from: 'settlement', to: 'cleanup' },
     ]);
     expect(played.seats[0]?.hands).toHaveLength(1);
@@ -566,7 +566,7 @@ describe('showEvents', () => {
     const swept = showEvent(played, { type: 'PhaseChanged', from: 'cleanup', to: 'idle' });
     expect(swept.seats[0]?.hands).toEqual([]);
     expect(swept.seats[0]?.baseBet).toBe(0);
-    expect(swept.seats[0]?.bankroll).toBe(105);
+    expect(swept.seats[0]?.bankroll).toBe(10_500);
     // The cards go; the reaction stays, because M5's characters respond to the
     // round that just ended.
     expect(swept.seats[0]?.lastAction).toBe('stand');
@@ -592,7 +592,7 @@ describe('showEvents', () => {
 
   it('refuses an event about a seat or a hand that is not on the felt', () => {
     const table = openTable(SEATS);
-    expect(() => showEvent(table, { type: 'BetPlaced', seat: 5, amount: 5, bankroll: 95 })).toThrow(
+    expect(() => showEvent(table, { type: 'BetPlaced', seat: 5, amount: 500, bankroll: 9500 })).toThrow(
       /no seat 5/,
     );
     expect(() => showEvent(table, dealt(0, 0, card('T'), 10, false))).toThrow(/no hand at index 0/);

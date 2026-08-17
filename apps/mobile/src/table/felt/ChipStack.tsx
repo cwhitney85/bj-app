@@ -11,6 +11,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { C } from '../../ui/theme';
 import { CHIP_COLORS, chipsFor, type ChipDenomination } from './chips';
+import { formatMoney } from '../../ui/money';
 
 /** How much of each chip below stays visible. A real stack shows the edge only. */
 const RISE = 0.22;
@@ -61,7 +62,7 @@ export function ChipStack({
           chip can express (chips.ts). A $5 bet insures for $2.50, and the felt
           says $2.50 with no chip under it rather than rounding to one. */}
       <Text style={[styles.amount, { fontSize: Math.max(9, size * 0.42) }]}>
-        {label ?? `$${format(amount)}`}
+        {label ?? formatMoney(amount)}
         {hidden > 0 ? ` (+${hidden})` : ''}
       </Text>
     </View>
@@ -99,11 +100,6 @@ function Chip({
       ]}
     />
   );
-}
-
-/** `$5`, not `$5.00`; `$2.50` when the cents are real. Insurance is half a bet. */
-function format(amount: number): string {
-  return Number.isInteger(amount) ? `${amount}` : amount.toFixed(2);
 }
 
 const styles = StyleSheet.create({

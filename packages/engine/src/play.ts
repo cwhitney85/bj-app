@@ -23,6 +23,7 @@ import {
   takeInsurance,
   type StepResult,
 } from './round.js';
+import type { Cents } from './money.js';
 import { decideAction, type BotPolicy } from './bots.js';
 import { isOccupied, seatAt, type RoundState } from './state.js';
 import { actionView, betView, insuranceView, type ActionView, type BetView, type InsuranceView } from './view.js';
@@ -46,7 +47,7 @@ export type SeatDecider = {
 export type Deciders = ReadonlyMap<number, SeatDecider>;
 
 /** Wrap a policy with a flat bet — the MVP's only betting behaviour (SPEC §2). */
-export function flatBettor(policy: BotPolicy, bet: number): SeatDecider {
+export function flatBettor(policy: BotPolicy, bet: Cents): SeatDecider {
   return {
     bet: () => bet,
     takeInsurance: (view) => policy.takeInsurance(view),
@@ -108,6 +109,7 @@ export function playRound(state: RoundState, deciders: Deciders): RoundResult {
           // the same reason `strategy.ts` collapses a chart cell onto a legal
           // action: the personality describes an intent, not a guarantee.
           const wants = decider.takeInsurance(view);
+          // Integer: `cost` is 0.5 and `validateBet` refuses an odd base bet.
           const stake = view.seat.baseBet * decision.cost;
           const take = wants && stake <= view.seat.bankroll;
           current = apply(events, takeInsurance(current, seatIndex, take));
@@ -149,7 +151,7 @@ export function playRounds(state: RoundState, deciders: Deciders, rounds: number
  * one that will not have a `SeatDecider`.
  */
 export function collectBets(state: RoundState, deciders: Deciders): Map<number, number> {
-  const bets = new Map<number, number>();
+  const bets = new Map<number, Cents>();
   for (const seat of state.seats) {
     if (!isOccupied(seat)) continue;
     const decider = deciders.get(seat.index);

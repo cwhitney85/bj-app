@@ -24,6 +24,7 @@
  * engine's business. This module is the pure function that log is kept *for*.
  */
 
+import type { Cents } from './money.js';
 import type { Decision } from './coach.js';
 import type { GameEvent } from './events.js';
 import { seatResult, type JerkTally, type SeatResult } from './replay.js';
@@ -59,12 +60,17 @@ export type Mistake = {
   /** How many times the player deviated from a recommendation with this code. */
   readonly count: number;
   /** Money given up across those deviations. Positive means lost. */
-  readonly evLost: number;
+  readonly evLost: Cents;
 };
 
 /**
- * The report card. Money fields are in dollars at the stakes actually played;
+ * The report card. Money fields are in **cents** at the stakes actually played;
  * `accuracy` is a fraction in [0, 1], not a percentage.
+ *
+ * `net`, `biggestWin` and `biggestLoss` are integer cents — money that moved.
+ * `evLost` is real cents, because it is a sum of expectations rather than of
+ * payments (money.ts). Both are the same unit, which is what stops the one line
+ * where they meet from being a place a missing `× 100` looks plausible.
  */
 export type SessionReport = {
   /** Rounds the player was dealt into. Sitting out is not a round. */
@@ -72,11 +78,11 @@ export type SessionReport = {
   /** Hands settled. Larger than `roundsPlayed` exactly as often as splits happen. */
   readonly handsPlayed: number;
   /** Profit across the session, insurance included. Negative is a loss. */
-  readonly net: number;
+  readonly net: Cents;
   /** Best round, signed. 0 when no round was ever won. */
-  readonly biggestWin: number;
+  readonly biggestWin: Cents;
   /** Worst round, signed — so this number is negative or 0, never a magnitude. */
-  readonly biggestLoss: number;
+  readonly biggestLoss: Cents;
 
   /** Decisions the player was coached on: actions plus insurance offers. */
   readonly decisionsMade: number;
@@ -99,7 +105,7 @@ export type SessionReport = {
    * loss than the player actually took, which is the same lie as reporting a
    * smaller one.
    */
-  readonly evLost: number;
+  readonly evLost: Cents;
   /** Deviations grouped by the lesson they missed, most expensive first. */
   readonly mistakes: readonly Mistake[];
 

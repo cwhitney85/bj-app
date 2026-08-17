@@ -31,6 +31,7 @@
  * identical — if this file ever starts deciding anything, that test breaks.
  */
 
+import type { Cents } from './money.js';
 import type { GameEvent } from './events.js';
 import type { Action } from './hand.js';
 import { collectBets, type Deciders } from './play.js';
@@ -85,19 +86,20 @@ export type PlayerPrompt =
   | {
       readonly kind: 'bet';
       readonly view: BetView;
-      readonly min: number;
+      /** Table minimum, in cents. */
+      readonly min: Cents;
       /**
        * The most the player can stake: the table maximum, or their bankroll if
        * that is smaller. When `max < min` they cannot bet at all and the only
        * legal answer is 0 (sit the round out).
        */
-      readonly max: number;
+      readonly max: Cents;
     }
   | {
       readonly kind: 'insurance';
       readonly view: InsuranceView;
-      /** The stake in money, already resolved from `view.cost` and the base bet. */
-      readonly stake: number;
+      /** The stake in cents, already resolved from `view.cost` and the base bet. */
+      readonly stake: Cents;
     }
   | { readonly kind: 'action'; readonly view: ActionView };
 

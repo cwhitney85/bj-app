@@ -43,8 +43,8 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BANKROLL = 100_000;
-const BET = 10;
+const BANKROLL = 10_000_000;
+const BET = 1000;
 
 type SeatSpec = 'player' | 'empty' | 'bot';
 type ActionPrompt = Extract<PlayerPrompt, { kind: 'action' }>;
@@ -414,7 +414,7 @@ describe('assess', () => {
     expect(decision.evDelta).toBeLessThan(-0.5);
     expect(decision.moneyDelta).toBeCloseTo(decision.evDelta * coaching.stake, 10);
     expect(coaching.stake).toBe(BET);
-    expect(decision.moneyDelta).toBeLessThan(-5);
+    expect(decision.moneyDelta).toBeLessThan(-500);
   });
 
   it('rejects an action the hand could not have taken', () => {

@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { Hint, Reviewed } from '../table/tableState';
+import { formatExpectation } from '../ui/money';
 
 export function HintCard({ hint }: { readonly hint: Hint }) {
   const [expanded, setExpanded] = useState(false);
@@ -224,11 +225,12 @@ function signedCents(ev: number): string {
  * sentence here is allowed to be capable of lying.
  */
 function signedMoney(delta: number): string {
-  const amount = Math.abs(delta).toFixed(2);
-  if (Math.abs(delta) < 0.005) return 'That costs nothing on average.';
+  const amount = formatExpectation(Math.abs(delta));
+  // Half a cent, now expressed in cents rather than dollars.
+  if (Math.abs(delta) < 0.5) return 'That costs nothing on average.';
   return delta < 0
-    ? `On average that costs about $${amount}.`
-    : `On average that gains about $${amount}.`;
+    ? `On average that costs about ${amount}.`
+    : `On average that gains about ${amount}.`;
 }
 
 function verdictStyle(decision: Decision) {

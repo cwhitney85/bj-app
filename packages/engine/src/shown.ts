@@ -37,6 +37,7 @@
  */
 
 import type { Card } from './cards.js';
+import type { Cents } from './money.js';
 import type { GameEvent } from './events.js';
 import type { Action } from './hand.js';
 import type { HandOutcome } from './settle.js';
@@ -58,7 +59,7 @@ export type ShownCard = { readonly facing: 'up'; readonly card: Card } | { reado
  */
 export type ShownHand = {
   readonly cards: readonly Card[];
-  readonly bet: number;
+  readonly bet: Cents;
   readonly total: number | null;
   readonly soft: boolean;
   readonly fromSplit: boolean;
@@ -75,15 +76,15 @@ export type ShownHand = {
   readonly surrendered: boolean;
   /** Set at settlement, for the chip animation; cleared when the felt clears. */
   readonly outcome: HandOutcome | null;
-  readonly net: number | null;
+  readonly net: Cents | null;
 };
 
 export type ShownSeat = {
   readonly index: number;
   readonly occupant: SeatOccupant;
-  readonly bankroll: number;
-  readonly baseBet: number;
-  readonly insuranceBet: number;
+  readonly bankroll: Cents;
+  readonly baseBet: Cents;
+  readonly insuranceBet: Cents;
   readonly insuranceResolved: boolean;
   readonly hands: readonly ShownHand[];
   /** Which hand is acting, or -1. Drives the "you are here" highlight. */
@@ -421,7 +422,7 @@ function restSeat(seat: SeatSetup): ShownSeat {
   };
 }
 
-function emptyHand(bet: number, fromSplit: boolean): ShownHand {
+function emptyHand(bet: Cents, fromSplit: boolean): ShownHand {
   return {
     cards: [],
     bet,
@@ -448,7 +449,7 @@ function splitHand(
   seatIndex: number,
   handIndex: number,
   newHandIndex: number,
-  bet: number,
+  bet: Cents,
 ): ShownTable {
   return withSeat(table, seatIndex, (seat) => {
     const hand = handOf(seat, handIndex);

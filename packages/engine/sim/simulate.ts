@@ -15,6 +15,7 @@
  * caller decides whether to print anything.
  */
 
+import type { Cents } from '../src/money.js';
 import {
   advanceUntilDecision,
   applyAction,
@@ -43,10 +44,10 @@ export type SimOptions = {
   readonly rules?: RuleSet;
   /** Occupied seats, all playing perfect basic strategy. Default 1. */
   readonly seats?: number;
-  /** Flat bet per hand. Default is the table minimum. */
-  readonly bet?: number;
-  /** Override the auto-sized bankroll. Must never bind, or play is distorted. */
-  readonly bankroll?: number;
+  /** Flat bet per hand, in cents. Default is the table minimum. */
+  readonly bet?: Cents;
+  /** Override the auto-sized bankroll, in cents. Must never bind, or play is distorted. */
+  readonly bankroll?: Cents;
   readonly onProgress?: (stats: SimStats) => void;
   readonly progressEveryRounds?: number;
 };
@@ -57,8 +58,8 @@ export type SimStats = {
   readonly hands: number;
   /** Hands settled, so splits count more than once. */
   readonly handsSettled: number;
-  /** Base bets only. This is the house-edge denominator (see below). */
-  readonly wagered: number;
+  /** Base bets only, in cents. This is the house-edge denominator (see below). */
+  readonly wagered: Cents;
   /** Every dollar that reached the felt, including doubles, splits, insurance. */
   readonly action: number;
   /** Player-side profit. Negative is a house win, which is the expected sign. */
@@ -120,7 +121,7 @@ export function simulate(options: SimOptions): SimStats {
 
   const bankroll = options.bankroll ?? autoBankroll(options.hands, bet);
   const seatConfigs: SeatConfig[] = [];
-  const bets = new Map<number, number>();
+  const bets = new Map<number, Cents>();
   for (let i = 0; i < rules.seatCount; i++) {
     const occupied = i < seatCount;
     seatConfigs.push({
@@ -310,8 +311,19 @@ function finalise(stats: MutableStats, bet: number): SimStats {
  * playing basic strategy and quietly biases the edge upwards. Five percent of
  * total turnover is roughly a twelve-sigma cushion on the expected loss.
  */
-function autoBankroll(hands: number, bet: number): number {
-  return Math.max(1000 * bet, hands * bet * 0.05);
+/**
+ * A bankroll large enough never to bind, in whole cents.
+ *
+ * `Math.ceil` is not defensive tidying. The `× 0.05` is the one multiplication
+ * left in the money path that can land off a cent boundary — for most stakes it
+ * happens to divide evenly, which is exactly why it would have gone unnoticed —
+ * and a fractional bankroll puts float noise straight back into
+ * `checkMoneyConservation`, which compares settlements against bankroll movement
+ * for exact equality. Rounding *up* because the number's only job is to be large
+ * enough not to matter (decision 11).
+ */
+function autoBankroll(hands: number, bet: Cents): Cents {
+  return Math.ceil(Math.max(1000 * bet, hands * bet * 0.05));
 }
 
 // --- Reporting -------------------------------------------------------------

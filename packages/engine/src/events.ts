@@ -6,6 +6,7 @@
  * it consumes these on its own clock, arbitrarily far behind the logical state.
  */
 
+import type { Cents } from './money.js';
 import type { Card } from './cards.js';
 import type { Action } from './hand.js';
 import type { HandOutcome } from './settle.js';
@@ -18,7 +19,7 @@ export type SeatRef = {
 
 export type GameEvent =
   | { readonly type: 'RoundStarted'; readonly roundNumber: number; readonly shoeIndex: number }
-  | { readonly type: 'BetPlaced'; readonly seat: number; readonly amount: number; readonly bankroll: number }
+  | { readonly type: 'BetPlaced'; readonly seat: number; readonly amount: Cents; readonly bankroll: Cents }
   | {
       readonly type: 'CardDealt';
       readonly seat: number | 'dealer';
@@ -31,7 +32,7 @@ export type GameEvent =
     }
   | { readonly type: 'HoleCardPlaced'; readonly dealerUpcard: Card }
   | { readonly type: 'InsuranceOffered'; readonly seats: readonly number[]; readonly cost: number }
-  | { readonly type: 'InsuranceTaken'; readonly seat: number; readonly amount: number; readonly bankroll: number }
+  | { readonly type: 'InsuranceTaken'; readonly seat: number; readonly amount: Cents; readonly bankroll: Cents }
   | { readonly type: 'InsuranceDeclined'; readonly seat: number }
   /** `soft` is carried for the same reason `DealerDrew` and `DealerStood` carry
    *  it: a revealed A,6 renders as a soft 17, and the UI is not allowed to
@@ -56,9 +57,9 @@ export type GameEvent =
       readonly card: Card;
       readonly total: number;
       readonly soft: boolean;
-      readonly bet: number;
+      readonly bet: Cents;
     }
-  | { readonly type: 'HandSplit'; readonly ref: SeatRef; readonly newHandIndex: number; readonly bet: number }
+  | { readonly type: 'HandSplit'; readonly ref: SeatRef; readonly newHandIndex: number; readonly bet: Cents }
   | { readonly type: 'HandSurrendered'; readonly ref: SeatRef }
   | { readonly type: 'TurnStarted'; readonly ref: SeatRef; readonly legalActions: readonly Action[] }
   | { readonly type: 'DealerDrew'; readonly card: Card; readonly total: number; readonly soft: boolean }
@@ -68,18 +69,18 @@ export type GameEvent =
       readonly type: 'HandSettled';
       readonly ref: SeatRef;
       readonly outcome: HandOutcome;
-      readonly bet: number;
-      readonly payout: number;
-      readonly net: number;
+      readonly bet: Cents;
+      readonly payout: Cents;
+      readonly net: Cents;
     }
   | {
       readonly type: 'InsuranceSettled';
       readonly seat: number;
-      readonly bet: number;
-      readonly payout: number;
-      readonly net: number;
+      readonly bet: Cents;
+      readonly payout: Cents;
+      readonly net: Cents;
     }
-  | { readonly type: 'BankrollChanged'; readonly seat: number; readonly bankroll: number; readonly delta: number }
+  | { readonly type: 'BankrollChanged'; readonly seat: number; readonly bankroll: Cents; readonly delta: Cents }
   | { readonly type: 'CutCardReached'; readonly shoeIndex: number }
   | { readonly type: 'ShuffleStarted'; readonly seed: number }
   | { readonly type: 'PhaseChanged'; readonly from: Phase; readonly to: Phase };

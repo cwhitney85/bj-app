@@ -17,6 +17,8 @@
 
 import {
   addToTally,
+  DOLLAR,
+  largestPlayableBet,
   advanceUntilPlayer,
   assess,
   assignJerk,
@@ -41,6 +43,7 @@ import {
   submitInsurance,
   VEGAS_STRIP,
   type BotPolicy,
+  type Cents,
   type Choice,
   type Coaching,
   type CoachSettings,
@@ -204,8 +207,10 @@ export type TableConfig = {
   readonly seed: number;
   readonly playerSeat: number;
   readonly botSeats: readonly number[];
-  readonly bankroll: number;
-  readonly botBet: number;
+  /** Starting bankroll, in cents (money.ts). */
+  readonly bankroll: Cents;
+  /** What each bot stakes per round, in cents. */
+  readonly botBet: Cents;
   readonly coachSettings: CoachSettings;
   /**
    * SPEC §6: deal with one bot seat already holding a bad habit.
@@ -231,8 +236,8 @@ export const DEFAULT_CONFIG: TableConfig = {
   /** Bottom-centre in the eventual 2.5D arc (SPEC §9). */
   playerSeat: 3,
   botSeats: [2, 4],
-  bankroll: 500,
-  botBet: 25,
+  bankroll: 500 * DOLLAR,
+  botBet: 25 * DOLLAR,
   coachSettings: PURE_PLAY,
   startWithJerk: true,
 };
@@ -451,7 +456,13 @@ function solvent(decider: SeatDecider, stake: number): SeatDecider {
       // Push out what is left when it is short of the intended stake — which is
       // what a player with three chips does — and sit out below the minimum,
       // where no legal bet exists. 0 is how `collectBets` is told to skip.
-      const affordable = Math.min(stake, view.seat.bankroll);
+      // `largestPlayableBet` is not cosmetic rounding: `validateBet` refuses a
+      // stake that is not an even number of cents, because a 3:2 natural and a
+      // half-bet insurance both halve it (money.ts). A bankroll *can* be odd —
+      // a $5 natural pays $12.50 — so a seat pushing out everything it has left
+      // would otherwise place a bet the table must reject, which is the same
+      // whole-table crash decision 74 fixed, arriving by a new route.
+      const affordable = largestPlayableBet(Math.min(stake, view.seat.bankroll));
       return affordable < view.rules.minBet ? 0 : affordable;
     },
   };

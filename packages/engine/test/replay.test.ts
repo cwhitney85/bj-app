@@ -30,8 +30,8 @@ import {
 
 // --- Helpers ---------------------------------------------------------------
 
-const BANKROLL = 100_000;
-const BET = 10;
+const BANKROLL = 10_000_000;
+const BET = 1000;
 
 type SeatSpec = 'player' | 'empty' | BotPolicy;
 
@@ -260,12 +260,12 @@ describe('overriding a seat', () => {
     // Changing the bet would move money for a reason that has nothing to do
     // with how the hand was played, and the comparison is about play.
     const specs: readonly SeatSpec[] = ['player', policyById('mimics-dealer')];
-    for (const played of playedRounds(6, specs, 30, 25)) {
+    for (const played of playedRounds(6, specs, 30, 2500)) {
       const replayed = replayRound(played.recording, new Map([[1, PERFECT_POLICY]]));
       const bets = eventsOfType(replayed.events, 'BetPlaced');
       expect(bets.map((event) => [event.seat, event.amount])).toEqual([
-        [0, 25],
-        [1, 25],
+        [0, 2500],
+        [1, 2500],
       ]);
     }
   });
@@ -354,7 +354,7 @@ describe('seatResult', () => {
     seat: number,
     handIndex: number,
     net: number,
-    bet = 10,
+    bet = 1000,
   ): GameEvent => ({
     type: 'HandSettled',
     ref: { seat, handIndex },
@@ -366,33 +366,33 @@ describe('seatResult', () => {
 
   it('totals every hand the seat held, and nobody else’s', () => {
     const events: GameEvent[] = [
-      settled(0, 0, 15),
-      settled(1, 0, -10),
-      settled(0, 1, -10),
+      settled(0, 0, 1500),
+      settled(1, 0, -1000),
+      settled(0, 1, -1000),
       settled(0, 2, 0),
-      settled(2, 0, 10),
+      settled(2, 0, 1000),
     ];
     const result = seatResult(events, 0);
     expect(result.seat).toBe(0);
     expect(result.hands.map((hand) => hand.handIndex)).toEqual([0, 1, 2]);
-    expect(result.net).toBe(5);
+    expect(result.net).toBe(500);
     expect(result.insuranceNet).toBe(0);
   });
 
   it('folds insurance into the net and reports it separately as well', () => {
     const events: GameEvent[] = [
-      { type: 'InsuranceSettled', seat: 0, bet: 5, payout: 15, net: 10 },
-      settled(0, 0, -10),
-      { type: 'InsuranceSettled', seat: 1, bet: 5, payout: 0, net: -5 },
+      { type: 'InsuranceSettled', seat: 0, bet: 500, payout: 1500, net: 1000 },
+      settled(0, 0, -1000),
+      { type: 'InsuranceSettled', seat: 1, bet: 500, payout: 0, net: -500 },
     ];
     const result = seatResult(events, 0);
-    expect(result.insuranceNet).toBe(10);
+    expect(result.insuranceNet).toBe(1000);
     expect(result.net).toBe(0); // the classic insurance wash
     expect(result.hands).toHaveLength(1);
   });
 
   it('reports an empty round for a seat that was not in it', () => {
-    expect(seatResult([settled(1, 0, 10)], 0)).toEqual({
+    expect(seatResult([settled(1, 0, 1000)], 0)).toEqual({
       seat: 0,
       net: 0,
       hands: [],
@@ -441,9 +441,9 @@ describe('delta is corrected minus actual, and the verdict follows its sign', ()
     // the mimic played the book. Correcting the jerk *improves* the player's
     // result, so the jerk's real play cost them money.
     const result = demoRound(63);
-    expect(result.actual.net).toBe(-20);
-    expect(result.corrected.net).toBe(20);
-    expect(result.delta).toBe(40);
+    expect(result.actual.net).toBe(-2000);
+    expect(result.corrected.net).toBe(2000);
+    expect(result.delta).toBe(4000);
     expect(result.delta).toBe(result.corrected.net - result.actual.net);
     expect(result.verdict).toBe('hurt');
   });
@@ -453,8 +453,8 @@ describe('delta is corrected minus actual, and the verdict follows its sign', ()
     // mimic played the book. The bad play was worth $10 to them.
     const result = demoRound(2);
     expect(result.actual.net).toBe(0);
-    expect(result.corrected.net).toBe(-10);
-    expect(result.delta).toBe(-10);
+    expect(result.corrected.net).toBe(-1000);
+    expect(result.delta).toBe(-1000);
     expect(result.verdict).toBe('helped');
   });
 
@@ -524,7 +524,7 @@ describe('the third-base myth, measured', () => {
     // the run stays honest instead of flaky. `replay.slow.test.ts` runs ten
     // times as many rounds for a tighter figure.
     const ROUNDS = 20_000;
-    const BET_SIZE = 5;
+    const BET_SIZE = 500;
 
     let tally = EMPTY_JERK_TALLY;
     let sumSquares = 0;
@@ -577,13 +577,13 @@ describe('addToTally', () => {
 
   it('counts one verdict and adds one delta per call', () => {
     let tally = EMPTY_JERK_TALLY;
-    for (const delta of [40, -10, 0, 5, -5, -2.5]) tally = addToTally(tally, verdictOf(delta));
-    expect(tally).toEqual({ helped: 3, hurt: 2, unchanged: 1, netDelta: 27.5 });
+    for (const delta of [4000, -1000, 0, 500, -500, -250]) tally = addToTally(tally, verdictOf(delta));
+    expect(tally).toEqual({ helped: 3, hurt: 2, unchanged: 1, netDelta: 2750 });
   });
 
   it('does not mutate the tally it is given, so a session log can keep snapshots', () => {
     const start = EMPTY_JERK_TALLY;
-    const next = addToTally(start, verdictOf(40));
+    const next = addToTally(start, verdictOf(4000));
     expect(start).toEqual({ helped: 0, hurt: 0, unchanged: 0, netDelta: 0 });
     expect(next).not.toBe(start);
   });
@@ -592,9 +592,9 @@ describe('addToTally', () => {
     // Many small helps and one large hurt is a real pattern, and "helped 3,
     // hurt 1" would hide it entirely.
     let tally = EMPTY_JERK_TALLY;
-    for (const delta of [-5, -5, -5, 60]) tally = addToTally(tally, verdictOf(delta));
+    for (const delta of [-500, -500, -500, 6000]) tally = addToTally(tally, verdictOf(delta));
     expect(tally.helped).toBe(3);
     expect(tally.hurt).toBe(1);
-    expect(tally.netDelta).toBe(45); // the jerk cost money despite helping more often
+    expect(tally.netDelta).toBe(4500); // the jerk cost money despite helping more often
   });
 });

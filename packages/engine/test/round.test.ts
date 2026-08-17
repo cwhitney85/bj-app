@@ -44,7 +44,7 @@ function stack(ranks: readonly string[], rules: RuleSet = VEGAS_STRIP): Shoe {
   };
 }
 
-function gameWith(shoe: Shoe, seatCount = 1, bankroll = 1000): RoundState {
+function gameWith(shoe: Shoe, seatCount = 1, bankroll = 100_000): RoundState {
   const seats = Array.from({ length: VEGAS_STRIP.seatCount }, (_, i) => ({
     occupant:
       i === 0
@@ -120,17 +120,17 @@ describe('betting', () => {
   const shoe = stack(['T', '9', '7', '8']);
 
   it('deducts the bet from the bankroll immediately', () => {
-    const { state } = startRound(gameWith(shoe), new Map([[0, 25]]));
-    expect(seatAt(state, 0).bankroll).toBe(975);
-    expect(seatAt(state, 0).baseBet).toBe(25);
+    const { state } = startRound(gameWith(shoe), new Map([[0, 2500]]));
+    expect(seatAt(state, 0).bankroll).toBe(97_500);
+    expect(seatAt(state, 0).baseBet).toBe(2500);
   });
 
   it('enforces table limits and bankroll', () => {
     const betting = advanceUntilDecision(gameWith(shoe)).state;
-    expect(() => placeBets(betting, new Map([[0, 1]]))).toThrow(/minimum/);
-    expect(() => placeBets(betting, new Map([[0, 5000]]))).toThrow(/maximum/);
-    const broke = advanceUntilDecision(gameWith(shoe, 1, 10)).state;
-    expect(() => placeBets(broke, new Map([[0, 500]]))).toThrow(/bankroll/);
+    expect(() => placeBets(betting, new Map([[0, 100]]))).toThrow(/minimum/);
+    expect(() => placeBets(betting, new Map([[0, 500_000]]))).toThrow(/maximum/);
+    const broke = advanceUntilDecision(gameWith(shoe, 1, 1000)).state;
+    expect(() => placeBets(broke, new Map([[0, 50_000]]))).toThrow(/bankroll/);
   });
 
   it('refuses to deal a round nobody bet on', () => {
@@ -143,7 +143,7 @@ describe('dealing', () => {
   it('deals two cards to each live seat and the dealer, hole card last', () => {
     // seat0, dealer-up, seat1, ... order is player-then-dealer per pass.
     const shoe = stack(['T', '6', '9', 'K']);
-    const { state, events } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state, events } = startRound(gameWith(shoe), new Map([[0, 1000]]));
 
     expect(seatAt(state, 0).hands[0]?.cards.map((c) => c.rank)).toEqual(['T', '9']);
     expect(state.dealer.cards.map((c) => c.rank)).toEqual(['6', 'K']);
@@ -157,7 +157,7 @@ describe('dealing', () => {
 
   it('skips seats that did not bet', () => {
     const shoe = stack(['T', '6', '9', 'K', '5', '5', '5', '5']);
-    const { state } = startRound(gameWith(shoe, 3), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe, 3), new Map([[0, 1000]]));
     expect(seatAt(state, 1).hands).toHaveLength(0);
     expect(seatAt(state, 2).hands).toHaveLength(0);
   });
@@ -167,7 +167,7 @@ describe('turn order', () => {
   it('acts in table order, which is what makes third base meaningful', () => {
     // 3 seats bet; deal order cycles seat0, seat1, seat2, dealer.
     const shoe = stack(['T', 'T', 'T', '6', '5', '5', '5', 'K']);
-    const { state } = startRound(gameWith(shoe, 3), new Map([[0, 10], [1, 10], [2, 10]]));
+    const { state } = startRound(gameWith(shoe, 3), new Map([[0, 1000], [1, 1000], [2, 1000]]));
 
     const order: number[] = [];
     let current = state;
@@ -182,7 +182,7 @@ describe('turn order', () => {
 
   it('refuses an action from a seat whose turn it is not', () => {
     const shoe = stack(['T', 'T', 'T', '6', '5', '5', '5', 'K']);
-    const { state } = startRound(gameWith(shoe, 3), new Map([[0, 10], [1, 10]]));
+    const { state } = startRound(gameWith(shoe, 3), new Map([[0, 1000], [1, 1000]]));
     expect(() => applyAction(state, 1, 'stand')).toThrow(/turn/);
   });
 });
@@ -190,7 +190,7 @@ describe('turn order', () => {
 describe('illegal actions', () => {
   it('never accepts an action outside the legal list', () => {
     const shoe = stack(['T', '6', '9', 'K']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const decision = pendingDecision(state);
     if (decision?.kind !== 'action') throw new Error('expected an action decision');
 
@@ -202,7 +202,7 @@ describe('illegal actions', () => {
 
   it('throws rather than hang when advanced while a decision is outstanding', () => {
     const shoe = stack(['T', '6', '9', 'K']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     expect(() => advance(state)).toThrow(/waiting for action/);
   });
 });
@@ -210,7 +210,7 @@ describe('illegal actions', () => {
 describe('hitting and busting', () => {
   it('ends the hand on a bust and moves on', () => {
     const shoe = stack(['T', '6', '6', 'K', 'Q']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const { state: after, events } = applyAction(state, 0, 'hit');
 
     expect(eventsOfType(events, 'HandBusted')).toHaveLength(1);
@@ -221,7 +221,7 @@ describe('hitting and busting', () => {
 
   it('lets the same hand act again after a hit that did not bust', () => {
     const shoe = stack(['5', '6', '4', 'K', '3']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const { state: after } = applyAction(state, 0, 'hit');
     const decision = pendingDecision(after);
     expect(decision?.kind).toBe('action');
@@ -232,14 +232,14 @@ describe('hitting and busting', () => {
 describe('doubling', () => {
   it('takes a second bet, deals exactly one card, and ends the hand', () => {
     const shoe = stack(['6', '6', '5', 'K', '9']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const { state: after, events } = applyAction(state, 0, 'double');
 
     const hand = seatAt(after, 0).hands[0];
-    expect(hand?.bet).toBe(20);
+    expect(hand?.bet).toBe(2000);
     expect(hand?.cards).toHaveLength(3);
     expect(hand?.doubled).toBe(true);
-    expect(eventsOfType(events, 'HandDoubled')[0]?.bet).toBe(20);
+    expect(eventsOfType(events, 'HandDoubled')[0]?.bet).toBe(2000);
     expect(after.phase).toBe('dealerPlay');
   });
 });
@@ -248,12 +248,12 @@ describe('splitting', () => {
   it('splits a pair into two hands, each played in turn', () => {
     // seat cards 8,8; dealer 6,K; then 3 (to hand 0), 2 (to hand 1)
     const shoe = stack(['8', '6', '8', 'K', '3', '2', '9', '9']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const { state: after, events } = applyAction(state, 0, 'split');
 
     const seat = seatAt(after, 0);
     expect(seat.hands).toHaveLength(2);
-    expect(seat.bankroll).toBe(980); // two 10-unit bets committed
+    expect(seat.bankroll).toBe(98_000); // two $10 bets committed
     expect(eventsOfType(events, 'HandSplit')[0]?.newHandIndex).toBe(1);
 
     // Hand 0 was topped up to two cards and is live again.
@@ -265,7 +265,7 @@ describe('splitting', () => {
 
   it('gives split aces one card each and no further action', () => {
     const shoe = stack(['A', '6', 'A', 'K', '9', '5', '7', '7']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const { state: after } = applyAction(state, 0, 'split');
 
     const seat = seatAt(after, 0);
@@ -277,19 +277,19 @@ describe('splitting', () => {
 
   it('21 on a split ace is paid even money, not 3:2', () => {
     const shoe = stack(['A', '6', 'A', 'K', 'T', '5', '7', '7']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const afterSplit = applyAction(state, 0, 'split').state;
     const { events } = playRound(afterSplit, alwaysStand);
 
     const settled = eventsOfType(events, 'HandSettled');
     const twentyOne = settled.find((e) => e.ref.handIndex === 0);
     expect(twentyOne?.outcome).toBe('win');
-    expect(twentyOne?.net).toBe(10); // even money, not 15
+    expect(twentyOne?.net).toBe(1000); // even money, not 1500
   });
 
   it('stops splitting at the four-hand limit', () => {
     const shoe = stack(['8', '6', '8', 'K', '8', '8', '8', '8', '8', '8', '9', '9']);
-    let current = startRound(gameWith(shoe), new Map([[0, 10]])).state;
+    let current = startRound(gameWith(shoe), new Map([[0, 1000]])).state;
     for (let i = 0; i < 3; i++) {
       current = applyAction(current, 0, 'split').state;
     }
@@ -307,18 +307,18 @@ describe('blackjack and the dealer peek', () => {
     // stopping. The settlement events are therefore in this event list already;
     // there is nothing left for playRound to drive.
     const shoe = stack(['A', '6', 'K', '9', '5']);
-    const { state, events } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state, events } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     expect(state.phase).toBe('betting');
 
     const settled = eventsOfType(events, 'HandSettled')[0];
     expect(settled?.outcome).toBe('blackjack');
-    expect(settled?.net).toBe(15); // $10 at 3:2
+    expect(settled?.net).toBe(1500); // $10 at 3:2
   });
 
   it('ends the round immediately when the dealer peeks to a natural', () => {
     // Dealer shows an ace with a ten in the hole; nobody gets to act.
     const shoe = stack(['T', 'A', '9', 'K']);
-    const { state, events } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state, events } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     // Insurance is offered first on an ace upcard.
     const decision = pendingDecision(state);
     expect(decision?.kind).toBe('insurance');
@@ -333,7 +333,7 @@ describe('blackjack and the dealer peek', () => {
 
   it('pushes a natural against a natural', () => {
     const shoe = stack(['A', 'A', 'K', 'K']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const declined = takeInsurance(state, 0, false).state;
     const { events } = playRound(declined, alwaysStand);
     const settled = eventsOfType(events, 'HandSettled')[0];
@@ -345,27 +345,27 @@ describe('blackjack and the dealer peek', () => {
 describe('insurance', () => {
   it('is offered only on an ace upcard and pays 2:1 when the dealer has a natural', () => {
     const shoe = stack(['T', 'A', '9', 'K']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 100]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 10_000]]));
     const taken = takeInsurance(state, 0, true).state;
-    expect(seatAt(taken, 0).insuranceBet).toBe(50);
+    expect(seatAt(taken, 0).insuranceBet).toBe(5000);
 
     const { events } = playRound(taken, alwaysStand);
     const insurance = eventsOfType(events, 'InsuranceSettled')[0];
-    expect(insurance?.net).toBe(100); // 2:1 on a 50 stake
-    // Hand loses 100, insurance wins 100: the classic wash.
-    expect(eventsOfType(events, 'HandSettled')[0]?.net).toBe(-100);
+    expect(insurance?.net).toBe(10_000); // 2:1 on a 5000 stake
+    // Hand loses $100, insurance wins $100: the classic wash.
+    expect(eventsOfType(events, 'HandSettled')[0]?.net).toBe(-10_000);
   });
 
   it('is not offered on a ten upcard, which is the common misconception', () => {
     const shoe = stack(['9', 'K', '8', '9']);
-    const { state, events } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state, events } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     expect(eventsOfType(events, 'InsuranceOffered')).toHaveLength(0);
     expect(pendingDecision(state)?.kind).toBe('action');
   });
 
   it('rejects a second answer from the same seat', () => {
     const shoe = stack(['T', 'A', '9', '9']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const declined = takeInsurance(state, 0, false).state;
     expect(() => takeInsurance(declined, 0, false)).toThrow(/already answered/);
   });
@@ -374,7 +374,7 @@ describe('insurance', () => {
 describe('dealer play', () => {
   it('stands on soft 17 under Vegas Strip rules', () => {
     const shoe = stack(['T', 'A', '9', '6']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const declined = takeInsurance(state, 0, false).state;
     const { events } = playRound(declined, alwaysStand);
     expect(eventsOfType(events, 'DealerDrew')).toHaveLength(0);
@@ -387,7 +387,7 @@ describe('dealer play', () => {
     // (75% of 8 cards = index 6) sits beyond the 5 cards actually dealt —
     // otherwise cleanup reshuffles and resets the index we are asserting on.
     const shoe = stack(['T', '6', '6', 'K', 'Q', '5', '5', '5']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const busted = applyAction(state, 0, 'hit').state;
     const before = busted.shoe.index;
     const { events, state: after } = playRound(busted, alwaysStand);
@@ -401,36 +401,36 @@ describe('money', () => {
   it('conserves the bankroll on a push', () => {
     const shoe = stack(['T', 'T', '9', '9']);
     const start = gameWith(shoe);
-    const { state } = startRound(start, new Map([[0, 25]]));
+    const { state } = startRound(start, new Map([[0, 2500]]));
     const { state: after } = playRound(state, alwaysStand);
-    expect(seatAt(after, 0).bankroll).toBe(1000);
+    expect(seatAt(after, 0).bankroll).toBe(100_000);
   });
 
   it('returns stake plus profit on a doubled win', () => {
     // Player 6,5 = 11 doubles into a 9 for 20. Dealer 6,K = 16 must draw and
     // catches a ten for 26, so the doubled hand wins.
     const shoe = stack(['6', '6', '5', 'K', '9', 'T']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const doubled = applyAction(state, 0, 'double').state;
-    expect(seatAt(doubled, 0).bankroll).toBe(980); // both halves of the stake are down
+    expect(seatAt(doubled, 0).bankroll).toBe(98_000); // both halves of the stake are down
 
     const { state: after } = playRound(doubled, alwaysStand);
     // The $20 at risk comes back as $40: stake plus profit, not profit alone.
-    expect(seatAt(after, 0).bankroll).toBe(1020);
+    expect(seatAt(after, 0).bankroll).toBe(102_000);
   });
 
   it('keeps the whole doubled stake on a doubled loss', () => {
     // Same opening, but the dealer's 16 catches a 5 for 21 and the 20 loses.
     const shoe = stack(['6', '6', '5', 'K', '9', '5']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const doubled = applyAction(state, 0, 'double').state;
     const { state: after } = playRound(doubled, alwaysStand);
-    expect(seatAt(after, 0).bankroll).toBe(980);
+    expect(seatAt(after, 0).bankroll).toBe(98_000);
   });
 
   it('clears all bets and hands at cleanup', () => {
     const shoe = stack(['T', 'T', '9', '9']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 25]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 2500]]));
     const { state: after } = playRound(state, alwaysStand);
     const seat = seatAt(after, 0);
     expect(seat.hands).toHaveLength(0);
@@ -447,14 +447,14 @@ describe('shoe lifecycle', () => {
       seed: 42,
       seats: Array.from({ length: 7 }, (_, i) => ({
         occupant: i === 0 ? ({ kind: 'player' } as const) : ({ kind: 'empty' } as const),
-        bankroll: 100_000,
+        bankroll: 10_000_000,
       })),
     });
 
     let current = state;
     const allEvents: GameEvent[] = [];
     for (let round = 0; round < 60; round++) {
-      const started = startRound(current, new Map([[0, 5]]));
+      const started = startRound(current, new Map([[0, 500]]));
       const played = playRound(started.state, alwaysStand);
       current = played.state;
       allEvents.push(...started.events, ...played.events);
@@ -482,11 +482,11 @@ describe('golden-seed replay', () => {
               ? ({ kind: 'player' } as const)
               : ({ kind: 'bot', policyId: 'perfect', characterId: `c${i}` } as const)
             : ({ kind: 'empty' } as const),
-        bankroll: 100_000,
+        bankroll: 10_000_000,
       })),
     });
 
-    const bets = new Map([[0, 10], [1, 10], [2, 10]]);
+    const bets = new Map([[0, 1000], [1, 1000], [2, 1000]]);
     const events: GameEvent[] = [];
     // A policy that exercises every branch but stays a pure function of state.
     const policy = (state: RoundState, legal: readonly Action[]): Action => {
@@ -521,7 +521,7 @@ describe('golden-seed replay', () => {
 describe('purity', () => {
   it('never mutates the state passed in', () => {
     const shoe = stack(['8', '6', '8', 'K', '3', '2', '9', '9']);
-    const { state } = startRound(gameWith(shoe), new Map([[0, 10]]));
+    const { state } = startRound(gameWith(shoe), new Map([[0, 1000]]));
     const snapshot = JSON.stringify(state);
     applyAction(state, 0, 'split');
     applyAction(state, 0, 'hit');

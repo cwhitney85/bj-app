@@ -58,7 +58,8 @@ import {
   type TableState,
 } from '../src/table/tableState';
 
-const BET = 5;
+/** $5, in cents (money.ts) — the table minimum. */
+const BET = 500;
 
 const JERK_ON: TableConfig = { ...DEFAULT_CONFIG, startWithJerk: true };
 const JERK_OFF: TableConfig = { ...DEFAULT_CONFIG, startWithJerk: false };
@@ -325,8 +326,8 @@ describe('a bot that runs out of money', () => {
       seed: seedWhoseJerkIs('mimics-dealer'),
       // Two rounds of funding, so the seat is broke almost immediately and the
       // test does not depend on a 300-round grind to reach the interesting case.
-      bankroll: 500,
-      botBet: 250,
+      bankroll: 500_00,
+      botBet: 250_00,
     };
 
     const state = play(config, 40);
@@ -343,8 +344,8 @@ describe('a bot that runs out of money', () => {
     const config: TableConfig = {
       ...JERK_ON,
       seed: seedWhoseJerkIs('mimics-dealer'),
-      bankroll: 500,
-      botBet: 250,
+      bankroll: 500_00,
+      botBet: 250_00,
     };
     const deciders = openingDeciders(config);
     let state = drain(openTableState(config, deciders));

@@ -28,6 +28,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { seatName } from '../table/felt/seatArc';
 import type { JerkCheck as Check } from '../table/tableState';
+import { formatMoney } from '../ui/money';
 
 export function JerkCheckCard({
   check,
@@ -101,7 +102,7 @@ function Outcome({ label, net }: { readonly label: string; readonly net: number 
     <View style={styles.outcome}>
       <Text style={styles.outcomeLabel}>{label}</Text>
       <Text style={[styles.outcomeValue, net < 0 ? styles.bad : net > 0 ? styles.good : null]}>
-        {money(net)}
+        {formatMoney(net)}
       </Text>
     </View>
   );
@@ -115,7 +116,7 @@ function Outcome({ label, net }: { readonly label: string; readonly net: number 
  * than re-derived here precisely so this file cannot be the place it flips.
  */
 function verdictLine(result: Counterfactual): string {
-  const amount = money(Math.abs(result.delta));
+  const amount = formatMoney(Math.abs(result.delta));
   switch (result.verdict) {
     case 'unchanged':
       return 'Same result either way. Their play made no difference to what you were paid.';
@@ -134,11 +135,7 @@ function verdictLine(result: Counterfactual): string {
 function netLine(tally: JerkTally): string {
   const effect = -tally.netDelta;
   if (effect === 0) return 'Net effect on your money so far: exactly nothing.';
-  return `Net effect on your money so far: ${money(effect)}.`;
-}
-
-function money(value: number): string {
-  return `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`;
+  return `Net effect on your money so far: ${formatMoney(effect)}.`;
 }
 
 const styles = StyleSheet.create({

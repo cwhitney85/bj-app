@@ -45,7 +45,7 @@ import {
 // being plain data: the sweeps below cover every hand shape the chart has, which
 // no amount of simulated play would reach in a reasonable time.
 
-const BET = 10;
+const BET = 1000;
 
 /** Same compact card builder the other suites use: `cards('A', '7')`. */
 function cards(...specs: readonly string[]): Card[] {
@@ -102,7 +102,7 @@ function viewOf(specs: readonly string[], up: Rank, options: ViewOptions = {}): 
   const context: LegalActionContext = {
     rules,
     handCount: options.handCount ?? 1,
-    availableFunds: options.availableFunds ?? 1000,
+    availableFunds: options.availableFunds ?? 100_000,
   };
   const legal = legalActions(hand, context);
   if (legal.length === 0) return null;
@@ -126,7 +126,7 @@ function actingView(specs: readonly string[], up: Rank, options: ViewOptions = {
 
 function insuranceOffer(up: Rank = 'A'): InsuranceView {
   const hand = createHand(cards('T', '7'), BET);
-  const seat = seatHolding(hand, 1000);
+  const seat = seatHolding(hand, 100_000);
   return { table: tableShowing(up, VEGAS_STRIP, seat, hand), seat, cost: 0.5 };
 }
 
@@ -180,7 +180,7 @@ function label(view: ActionView): string {
 
 /** A table of seven bots all running the same habit — the fastest way to make
  *  a rare habit show up often enough to count events. */
-function tableOf(policy: BotPolicy, seed: number, seats = 7, bankroll = 1_000_000): RoundState {
+function tableOf(policy: BotPolicy, seed: number, seats = 7, bankroll = 100_000_000): RoundState {
   const configs: SeatConfig[] = Array.from({ length: VEGAS_STRIP.seatCount }, (_, i) => ({
     occupant:
       i < seats
@@ -193,7 +193,7 @@ function tableOf(policy: BotPolicy, seed: number, seats = 7, bankroll = 1_000_00
 
 function decidersFor(policy: BotPolicy, seats: number): Deciders {
   const map = new Map<number, ReturnType<typeof flatBettor>>();
-  for (let i = 0; i < seats; i++) map.set(i, flatBettor(policy, 5));
+  for (let i = 0; i < seats; i++) map.set(i, flatBettor(policy, 500));
   return map;
 }
 
@@ -597,7 +597,7 @@ describe('assignJerk', () => {
 // --- The habits cost money --------------------------------------------------
 
 type HabitCost = {
-  /** Mean cost per round, in dollars, of playing the habit instead of the book. */
+  /** Mean cost per round, in cents, of playing the habit instead of the book. */
   readonly mean: number;
   readonly standardError: number;
   readonly total: number;
@@ -629,7 +629,7 @@ type HabitCost = {
  */
 function costOfHabit(policy: BotPolicy, rounds: number, seed: number): HabitCost {
   const deciders = decidersFor(policy, 1);
-  let state = tableOf(policy, seed, 1, 10_000_000);
+  let state = tableOf(policy, seed, 1, 1_000_000_000);
   let total = 0;
   let sumSquares = 0;
   let changed = 0;
@@ -640,7 +640,7 @@ function costOfHabit(policy: BotPolicy, rounds: number, seed: number): HabitCost
     // The same starting state, the same shoe, the same stake — the one thing
     // that changes is how the hand is played. `replayRound` does exactly this
     // from a recording; driven live there is nothing to record.
-    const corrected = playRound(betting, new Map([[0, flatBettor(PERFECT_POLICY, 5)]]));
+    const corrected = playRound(betting, new Map([[0, flatBettor(PERFECT_POLICY, 500)]]));
     const delta = netOf(corrected.events) - netOf(played.events);
     total += delta;
     sumSquares += delta * delta;
@@ -716,12 +716,12 @@ describe('the session tally', () => {
           : i === 1
             ? ({ kind: 'bot', policyId: jerk.id, characterId: 'j' } as const)
             : ({ kind: 'empty' } as const),
-      bankroll: i < 2 ? 100_000 : 0,
+      bankroll: i < 2 ? 10_000_000 : 0,
     }));
     let state = createGame({ rules: VEGAS_STRIP, seed: 20260807, seats });
     const deciders: Deciders = new Map([
-      [0, flatBettor(PERFECT_POLICY, 10)],
-      [1, flatBettor(jerk, 10)],
+      [0, flatBettor(PERFECT_POLICY, 1000)],
+      [1, flatBettor(jerk, 1000)],
     ]);
 
     let tally = EMPTY_JERK_TALLY;

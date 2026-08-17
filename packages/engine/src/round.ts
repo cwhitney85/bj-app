@@ -38,6 +38,7 @@ import {
   type LegalActionContext,
 } from './hand.js';
 import { deriveSeed } from './rng.js';
+import { isPlayableBet, type Cents } from './money.js';
 import type { RuleSet } from './rules.js';
 import { settleRound } from './settle.js';
 import {
@@ -59,7 +60,8 @@ export type StepResult = {
 
 export type SeatConfig = {
   readonly occupant: SeatOccupant;
-  readonly bankroll: number;
+  /** Starting bankroll, in cents (money.ts). $500 is `50_000`. */
+  readonly bankroll: Cents;
 };
 
 export type GameConfig = {
@@ -181,7 +183,7 @@ export function legalActionsFor(state: RoundState, seatIndex: number): readonly 
  * Place bets for every occupied seat and deal the round.
  * Seats absent from `bets` sit the round out.
  */
-export function placeBets(state: RoundState, bets: ReadonlyMap<number, number>): StepResult {
+export function placeBets(state: RoundState, bets: ReadonlyMap<number, Cents>): StepResult {
   requirePhase(state, 'betting');
   const events: GameEvent[] = [];
   const seats = state.seats.map((seat) => {
@@ -210,7 +212,22 @@ export function placeBets(state: RoundState, bets: ReadonlyMap<number, number>):
   return transition({ ...state, seats }, 'dealing', events);
 }
 
-function validateBet(rules: RuleSet, amount: number, seat: Seat): void {
+/**
+ * The door every stake comes through, and the reason settlement never rounds.
+ *
+ * `isPlayableBet` is the one check here that is not about the table's posted
+ * limits: it is the precondition `settle.ts` depends on. A natural pays 3:2 and
+ * insurance stakes half the base bet, so an odd number of cents would settle to
+ * half a cent and there would be no honest answer about who gets it. Refusing
+ * the bet is the honest answer, and refusing it *here* means the whole engine
+ * downstream can treat money as exact (money.ts).
+ *
+ * Preconditions are the caller's to meet and every violation names them.
+ */
+function validateBet(rules: RuleSet, amount: Cents, seat: Seat): void {
+  if (!isPlayableBet(amount)) {
+    throw new Error(`Bet ${amount} is not a whole, even number of cents`);
+  }
   if (amount < rules.minBet) throw new Error(`Bet ${amount} is below the ${rules.minBet} minimum`);
   if (amount > rules.maxBet) throw new Error(`Bet ${amount} is above the ${rules.maxBet} maximum`);
   if (amount > seat.bankroll) {
@@ -378,6 +395,8 @@ export function takeInsurance(state: RoundState, seatIndex: number, take: boolea
   if (seat.insuranceResolved) throw new Error(`Seat ${seatIndex} already answered insurance`);
   if (!hasLiveBet(seat)) throw new Error(`Seat ${seatIndex} has no bet this round`);
 
+  // Exact: `validateBet` refuses an odd number of cents precisely so this
+  // halving, and the 3:2 natural, never produce a fraction (money.ts).
   const stake = seat.baseBet / 2;
   if (take && stake > seat.bankroll) {
     throw new Error(`Seat ${seatIndex} cannot afford ${stake} of insurance`);

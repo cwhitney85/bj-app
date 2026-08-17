@@ -23,6 +23,7 @@ import { ChipStack } from './ChipStack';
 import { CardFan } from './PlayingCard';
 import { seatArc, seatName } from './seatArc';
 import { Shoe } from './Shoe';
+import { formatMoney, formatSignedMoney } from '../../ui/money';
 
 /** A card's width at the near point of the arc, before perspective. */
 const CARD_WIDTH = 28;
@@ -201,7 +202,7 @@ function Chair({
               <ChipStack
                 amount={seat.insuranceBet}
                 size={16 * draw}
-                label={`ins $${seat.insuranceBet.toFixed(2)}`}
+                label={`ins ${formatMoney(seat.insuranceBet)}`}
               />
             ) : null}
           </View>
@@ -221,7 +222,7 @@ function Chair({
               {isJerk ? ' ⚠' : ''}
             </Text>
             <Text style={[styles.plateBankroll, { fontSize: 10 * Math.max(0.85, draw) }]}>
-              ${seat.bankroll.toFixed(2)}
+              {formatMoney(seat.bankroll)}
             </Text>
           </View>
         </>
@@ -251,7 +252,7 @@ function Hand({
       {hand.bet > 0 ? <ChipStack amount={hand.bet} size={18 * (compact ? 0.8 : 1)} /> : null}
       {hand.net === null ? null : (
         <Text style={[styles.net, hand.net >= 0 ? styles.good : styles.bad]}>
-          {hand.net >= 0 ? '+' : '−'}${Math.abs(hand.net).toFixed(2)}
+          {formatSignedMoney(hand.net)}
         </Text>
       )}
     </View>
