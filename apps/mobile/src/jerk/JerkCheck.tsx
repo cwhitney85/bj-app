@@ -23,11 +23,24 @@
  *   sample of one it would be a prediction rather than a report.
  */
 
-import type { Counterfactual, JerkTally } from '@bj/engine';
+import {
+  openTable,
+  showEvents,
+  type Counterfactual,
+  type GameEvent,
+  type JerkTally,
+  type SeatSetup,
+  type ShownHand,
+} from '@bj/engine';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Badge } from '../table/felt/Badge';
+import { status, tone, total } from '../table/felt/handRead';
+import { CardFan } from '../table/felt/PlayingCard';
 import { seatName } from '../table/felt/seatArc';
-import type { JerkCheck as Check } from '../table/tableState';
+import { untilSwept, type JerkCheck as Check } from '../table/tableState';
+import { C } from '../ui/theme';
 import { formatMoney } from '../ui/money';
 
 export function JerkCheckCard({
@@ -77,8 +90,20 @@ export function JerkCheckCard({
       <Text style={styles.habit}>{policy.description}</Text>
 
       <View style={styles.compare}>
-        <Outcome label="What happened" net={result.actual.net} />
-        <Outcome label="If they'd played the book" net={result.corrected.net} />
+        <Showdown
+          label="What happened"
+          seats={check.seats}
+          events={check.actualEvents}
+          seat={result.observedSeat}
+          net={result.actual.net}
+        />
+        <Showdown
+          label="If they'd played the book"
+          seats={check.seats}
+          events={result.events}
+          seat={result.observedSeat}
+          net={result.corrected.net}
+        />
       </View>
 
       <Text style={styles.verdict}>{verdictLine(result)}</Text>
@@ -97,16 +122,96 @@ export function JerkCheckCard({
   );
 }
 
-function Outcome({ label, net }: { readonly label: string; readonly net: number }) {
+/**
+ * One world: the player's hands and the dealer's, and what it paid.
+ *
+ * **The app does no game math here.** Every card, total, bust and net is read
+ * off a `ShownTable` — the same fold the felt draws from, which the engine
+ * tests field-for-field against `session.state`. So the alternate hand is not a
+ * reconstruction of what the replay "would have" dealt; it is the replay's own
+ * event stream, projected by the one projector.
+ *
+ * `Felt.tsx` was the obvious renderer to reuse and is the wrong one. It is a
+ * *table*: `flex: 1`, an absolutely positioned seven-chair arc, a 180pt corner
+ * radius. Two of those in a card inside `TableScreen`'s column would be
+ * illegible at the size available. What is reusable is the fold, and one layer
+ * below it `CardFan` and `Badge` — which is why those two moved out of the felt
+ * rather than being reimplemented here.
+ *
+ * The other seats are deliberately not drawn. The myth is a claim about *your*
+ * cards against the *dealer's*, and six other hands in a comparison card are
+ * six things to look at that the comparison is not about.
+ */
+function Showdown({
+  label,
+  seats,
+  events,
+  seat,
+  net,
+}: {
+  readonly label: string;
+  readonly seats: readonly SeatSetup[];
+  readonly events: readonly GameEvent[];
+  /** Whose hands to draw — always `Counterfactual.observedSeat`, the human. */
+  readonly seat: number;
+  readonly net: number;
+}) {
+  // Two things about this one line.
+  //
+  // The fold lives *here* and not in `JerkCheckCard`, which is correctness
+  // rather than tidiness: the card returns early while the offer is still
+  // unanswered, so a hook above that return would run on some renders and not
+  // others — a hook-count change that fires the instant the player taps "Let's
+  // check". `Showdown` mounts as a unit, so its hooks cannot move.
+  //
+  // And `untilSwept`, not the whole stream: a finished round ends with the
+  // table being cleared, so folding all of it draws two empty felts beside two
+  // correct numbers. Its own comment has the reasoning; it is the one thing
+  // about this card that the types cannot tell you.
+  const felt = useMemo(() => showEvents(openTable(seats), untilSwept(events)), [seats, events]);
+  const player = felt.seats[seat];
+  const hands: readonly ShownHand[] = player?.hands ?? [];
+
   return (
     <View style={styles.outcome}>
       <Text style={styles.outcomeLabel}>{label}</Text>
+
+      <View style={styles.side}>
+        <Text style={styles.sideLabel}>Dealer</Text>
+        <View style={styles.sideHand}>
+          <CardFan cards={felt.dealer.cards} width={CARD_WIDTH} />
+          <Badge
+            text={felt.dealer.busted ? 'BUST' : total(felt.dealer.total, felt.dealer.soft)}
+            tone={felt.dealer.busted ? 'bad' : 'plain'}
+          />
+        </View>
+      </View>
+
+      <View style={styles.side}>
+        <Text style={styles.sideLabel}>You</Text>
+        {/* A seat that sat the round out has no hands. It draws as nothing
+            rather than as an empty box: there is no hand to compare, and the
+            net beneath already says $0. */}
+        {hands.map((hand, index) => (
+          <View key={index} style={styles.sideHand}>
+            <CardFan
+              cards={hand.cards.map((card) => ({ facing: 'up' as const, card }))}
+              width={CARD_WIDTH}
+            />
+            <Badge text={status(hand)} tone={tone(hand)} />
+          </View>
+        ))}
+      </View>
+
       <Text style={[styles.outcomeValue, net < 0 ? styles.bad : net > 0 ? styles.good : null]}>
         {formatMoney(net)}
       </Text>
     </View>
   );
 }
+
+/** Small: two hands and a dealer have to fit a card the width of half a phone. */
+const CARD_WIDTH = 20;
 
 /**
  * `delta` is `corrected − actual` (replay.ts decision 29), so a positive delta
@@ -152,9 +257,20 @@ const styles = StyleSheet.create({
   who: { color: '#f2f7f4', fontSize: 13, fontWeight: '700' },
   habit: { color: '#8fbcd8', fontSize: 12 },
   compare: { flexDirection: 'row', gap: 12, paddingVertical: 4 },
-  outcome: { flex: 1, gap: 2 },
+  outcome: {
+    flex: 1,
+    gap: 6,
+    // A panel each, so the eye can tell which cards belong to which number.
+    // Two hands loose in a row read as one four-card hand.
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderRadius: 8,
+    padding: 8,
+  },
   outcomeLabel: { color: '#8fbcd8', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   outcomeValue: { color: '#f2f7f4', fontSize: 16, fontWeight: '700' },
+  side: { gap: 2 },
+  sideLabel: { color: C.textFaintest, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sideHand: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   good: { color: '#6fbf8b' },
   bad: { color: '#e08b6f' },
   verdict: { color: '#e6f2fa', fontSize: 13, lineHeight: 18 },

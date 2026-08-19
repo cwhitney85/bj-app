@@ -19,8 +19,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { RuleSet, ShownDealer, ShownHand, ShownSeat, ShownTable } from '@bj/engine';
 
 import { C } from '../../ui/theme';
+import { Badge } from './Badge';
 import { ChipStack } from './ChipStack';
 import { CardFan } from './PlayingCard';
+import { status, tone, total } from './handRead';
 import { seatArc, seatName } from './seatArc';
 import { Shoe } from './Shoe';
 import { formatMoney, formatSignedMoney } from '../../ui/money';
@@ -259,36 +261,6 @@ function Hand({
   );
 }
 
-// --- Small parts ------------------------------------------------------------
-
-function Badge({ text, tone }: { readonly text: string; readonly tone: 'plain' | 'good' | 'bad' }) {
-  if (text === '') return null;
-  return (
-    <View style={[styles.badge, tone === 'bad' && styles.badgeBad, tone === 'good' && styles.badgeGood]}>
-      <Text style={styles.badgeText}>{text}</Text>
-    </View>
-  );
-}
-
-/** `null` is a split hand still waiting for its second card — a real table shows no badge. */
-function total(value: number | null, soft: boolean): string {
-  if (value === null) return '';
-  return soft ? `soft ${value}` : `${value}`;
-}
-
-function status(hand: ShownHand): string {
-  if (hand.busted) return 'BUST';
-  if (hand.surrendered) return 'surr';
-  const shown = total(hand.total, hand.soft);
-  if (hand.doubled) return `${shown} ×2`;
-  return hand.standing ? `${shown} ✓` : shown;
-}
-
-function tone(hand: ShownHand): 'plain' | 'good' | 'bad' {
-  if (hand.busted || hand.surrendered) return 'bad';
-  return hand.standing ? 'good' : 'plain';
-}
-
 // --- Styles -----------------------------------------------------------------
 
 const styles = StyleSheet.create({
@@ -364,16 +336,6 @@ const styles = StyleSheet.create({
   plateActing: { borderColor: C.accent },
   plateName: { color: C.textDim, fontWeight: '700' },
   plateBankroll: { color: C.textFaint },
-
-  badge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  badgeGood: { backgroundColor: 'rgba(111,191,139,0.28)' },
-  badgeBad: { backgroundColor: 'rgba(224,139,111,0.30)' },
-  badgeText: { color: C.text, fontSize: 10, fontWeight: '700' },
 
   net: { fontSize: 10, fontWeight: '700' },
   good: { color: C.good },

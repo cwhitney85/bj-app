@@ -57,6 +57,7 @@ import {
   type RoundRecording,
   type SeatConfig,
   type SeatDecider,
+  type SeatSetup,
   type Session,
   type SessionReport,
   type SessionStep,
@@ -111,6 +112,31 @@ export type JerkCheck = {
   readonly policy: BotPolicy;
   /** The player tapped "let's check". */
   readonly revealed: boolean;
+  /**
+   * The round's real events — the ones `result` was computed against.
+   *
+   * SPEC §7 asks for the two outcomes "side by side", and two *numbers* is only
+   * half of that: the myth is a claim about cards, so the cards have to be on
+   * screen. `result.events` already carries the replayed round for exactly this
+   * (`Counterfactual.events`); the real round was the caller's argument and was
+   * therefore the half nothing kept.
+   *
+   * Held here rather than on `Counterfactual` because the engine was handed
+   * this array — giving it back would be a second copy of the caller's own
+   * input, and the two could then disagree about which round is being compared.
+   *
+   * Precondition: identical to the `actualEvents` passed to `counterfactual`.
+   * `closeShownRound` is the only place a `JerkCheck` is built, and it passes
+   * the same binding to both, so the two cannot drift.
+   */
+  readonly actualEvents: readonly GameEvent[];
+  /**
+   * The seating chart the round was played with, so both event streams can be
+   * folded back into a felt. Taken from the recording's start state rather than
+   * from `state.felt`, which has moved on: the felt's bankrolls are current and
+   * the picker may have re-seated the habit since.
+   */
+  readonly seats: readonly SeatSetup[];
 };
 
 /**
@@ -575,7 +601,13 @@ function closeShownRound(state: TableState, opening: GameEvent): TableState {
     unshownRounds: spent,
     jerkTally: addToTally(state.jerkTally, result),
     jerkCheck: offersCheck(result, jerk.policy)
-      ? { result, policy: jerk.policy, revealed: false }
+      ? {
+          result,
+          policy: jerk.policy,
+          revealed: false,
+          actualEvents: closed,
+          seats: pending.recording.state.seats,
+        }
       : null,
   };
 }
@@ -592,6 +624,36 @@ function closeShownRound(state: TableState, opening: GameEvent): TableState {
  */
 function offersCheck(result: Counterfactual, policy: BotPolicy): boolean {
   return policy.id !== CARD_NEUTRAL_JERK.id && result.actual.net < 0;
+}
+
+/**
+ * A round's events up to the moment its hands were paid, before the sweep.
+ *
+ * **A round's *complete* stream folds to an empty table.** `shown.ts` clears the
+ * felt on the way out of `cleanup` — correctly, because that is when the engine
+ * clears it — so `showEvents(openTable(seats), wholeRound)` returns bare chairs
+ * and a dealer holding nothing. The felt never shows that during play only
+ * because the player is looking at it before the sweep arrives; a fold has no
+ * such luck, and the failure is silent: no throw, no missing field, just a
+ * comparison card drawing two empty tables beside two correct numbers.
+ *
+ * SPEC §7 wants the outcomes "side by side", and the outcome of a hand is the
+ * hand *as it was paid*. That is the prefix this returns.
+ *
+ * One function for both worlds, deliberately. Truncating the two streams at
+ * different points would compare a settled hand against a swept table, and the
+ * column that vanished would read as a round the player never played.
+ *
+ * Precondition: `events` covers one round. Postcondition: the prefix ends after
+ * the last `HandSettled` and before the felt is cleared. A stream that never
+ * reaches cleanup — one still being drawn — is returned whole, which is the
+ * right answer for it.
+ */
+export function untilSwept(events: readonly GameEvent[]): readonly GameEvent[] {
+  const sweep = events.findIndex(
+    (event) => event.type === 'PhaseChanged' && event.from === 'cleanup',
+  );
+  return sweep === -1 ? events : events.slice(0, sweep);
 }
 
 /** The player tapped "let's check". Reveals a number that already existed. */

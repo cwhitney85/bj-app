@@ -30,11 +30,15 @@
 
 import {
   EMPTY_JERK_TALLY,
+  openTable,
   PERFECT_POLICY,
+  showEvents,
   VEGAS_STRIP,
   type Action,
   type Counterfactual,
   type GameEvent,
+  type ShownSeat,
+  type ShownTable,
 } from '@bj/engine';
 import { describe, expect, it } from 'vitest';
 
@@ -54,6 +58,8 @@ import {
   seating,
   setJerk,
   tally,
+  untilSwept,
+  type JerkCheck,
   type TableConfig,
   type TableState,
 } from '../src/table/tableState';
@@ -122,19 +128,34 @@ function playCollectingOffers(
   config: TableConfig,
   rounds: number,
 ): { readonly state: TableState; readonly offers: readonly Counterfactual[] } {
+  const { state, checks } = playCollectingChecks(config, rounds);
+  return { state, offers: checks.map((check) => check.result) };
+}
+
+/**
+ * The same drive, keeping the whole `JerkCheck` rather than its `result`.
+ *
+ * The card draws two *hands* as well as two numbers (SPEC §7's "side by side"),
+ * and the fields that carry them — `actualEvents` and `seats` — are not on
+ * `Counterfactual`.
+ */
+function playCollectingChecks(
+  config: TableConfig,
+  rounds: number,
+): { readonly state: TableState; readonly checks: readonly JerkCheck[] } {
   const deciders = openingDeciders(config);
   let state = drain(openTableState(config, deciders));
-  const offers: Counterfactual[] = [];
+  const checks: JerkCheck[] = [];
 
   for (let i = 0; i < rounds * 40; i += 1) {
     if (state.felt.roundNumber > rounds) break;
     const next = drain(submit(state, config, deciders));
     if (next.jerkCheck !== null && next.jerkCheck !== state.jerkCheck) {
-      offers.push(next.jerkCheck.result);
+      checks.push(next.jerkCheck);
     }
     state = next;
   }
-  return { state, offers };
+  return { state, checks };
 }
 
 /**
@@ -699,5 +720,140 @@ describe('moving the bad habit', () => {
 
   function counted(t: TableState['jerkTally']): number {
     return t.helped + t.hurt + t.unchanged;
+  }
+});
+
+// --- The two hands, side by side -------------------------------------------
+
+describe('the §7 comparison shows the hands the numbers came from', () => {
+  /**
+   * SPEC §7 asks for the two outcomes "side by side", and the myth is a claim
+   * about *cards* — so the card draws both hands, folded out of the two event
+   * streams by `shown.ts`. That fold is the engine's, proved field-for-field
+   * against `session.state` in `shown.test.ts`, and none of it is re-tested
+   * here.
+   *
+   * What the *app* decides is which stream goes in which column, and that is a
+   * mistake with no symptom: swap them and the felt renders two entirely
+   * plausible hands beside two correct numbers, with the labels reversed. The
+   * lesson would then be taught backwards using true figures.
+   */
+  const CHECKS = playCollectingChecks(JERK_ON, 40).checks;
+
+  it('offers something to compare', () => {
+    expect(CHECKS.length).toBeGreaterThan(3);
+  });
+
+  it('stops the fold before the table is swept', () => {
+    // The trap this card fell into, pinned so it cannot be walked back into.
+    // `shown.ts` clears the felt on the way out of `cleanup`, so a *complete*
+    // round folds to bare chairs and a dealer holding nothing — no throw, no
+    // missing field, just two empty tables beside two correct numbers. Both
+    // halves are asserted: that the whole stream really is empty, and that the
+    // prefix really is not.
+    for (const check of CHECKS) {
+      for (const events of [check.actualEvents, check.result.events]) {
+        expect(showEvents(openTable(check.seats), events).dealer.cards).toHaveLength(0);
+        expect(feltOf(check.seats, events).dealer.cards.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('returns a stream that has not been swept yet whole', () => {
+    // A round still being drawn has no sweep in it, and truncating it to
+    // nothing would blank the felt mid-hand if this were ever reused there.
+    const midRound = CHECKS[0]?.actualEvents.slice(0, 4) ?? [];
+    expect(midRound.length).toBeGreaterThan(0);
+    expect(untilSwept(midRound)).toBe(midRound);
+  });
+
+  it('never hands the same stream to both columns', () => {
+    // The cheapest form of the swap: one array wired in twice. Every number on
+    // screen would still be right, and the two hands would be identical.
+    for (const check of CHECKS) {
+      expect(check.actualEvents).not.toBe(check.result.events);
+    }
+  });
+
+  it('draws a hand that adds up to the number beside it', () => {
+    // The binding assertion. `SeatResult.net` counts insurance too, and the
+    // hands on the felt do not carry it, so it is subtracted by name rather
+    // than folded in — an insurance bet quietly landing in a hand's total is
+    // exactly the kind of arithmetic this card must not invent.
+    for (const check of CHECKS) {
+      const seat = check.result.observedSeat;
+      const actual = playerSeat(check.seats, check.actualEvents, seat);
+      const corrected = playerSeat(check.seats, check.result.events, seat);
+
+      expect(handsNet(actual)).toBe(check.result.actual.net - check.result.actual.insuranceNet);
+      expect(handsNet(corrected)).toBe(
+        check.result.corrected.net - check.result.corrected.insuranceNet,
+      );
+      expect(actual.hands).toHaveLength(check.result.actual.hands.length);
+      expect(corrected.hands).toHaveLength(check.result.corrected.hands.length);
+    }
+  });
+
+  it('shows the dealer face up in both worlds', () => {
+    // The round is over in both. A face-down card in a settled comparison is
+    // the felt withholding the one card the comparison is about — and
+    // `showEvents` would happily produce it if the streams were truncated.
+    for (const check of CHECKS) {
+      for (const events of [check.actualEvents, check.result.events]) {
+        const felt = feltOf(check.seats, events);
+        expect(felt.dealer.cards.length).toBeGreaterThanOrEqual(2);
+        expect(felt.dealer.cards.every((card) => card.facing === 'up')).toBe(true);
+      }
+    }
+  });
+
+  it('draws two different hands at least sometimes', () => {
+    // Without this the three tests above all pass when `actualEvents` is wired
+    // into both columns — the player would be shown one hand twice and told it
+    // was a comparison. A card-consuming habit shifts the shoe (replay.ts's
+    // whole premise), so over 40 rounds the two worlds must differ somewhere.
+    const differing = CHECKS.filter((check) => {
+      const seat = check.result.observedSeat;
+      const actual = playerSeat(check.seats, check.actualEvents, seat);
+      const corrected = playerSeat(check.seats, check.result.events, seat);
+      return cardsOf(actual) !== cardsOf(corrected);
+    });
+    expect(differing.length).toBeGreaterThan(0);
+  });
+
+  it('seats the comparison the way the round was seated', () => {
+    // `seats` comes off the recording's start state, not off `state.felt` —
+    // which has moved on, and whose bankrolls are current. A chart of the wrong
+    // length folds every seat index by one and the player's hands appear in
+    // somebody else's column.
+    for (const check of CHECKS) {
+      expect(check.seats).toHaveLength(VEGAS_STRIP.seatCount);
+      expect(check.seats.map((seat) => seat.index)).toEqual(
+        check.seats.map((_, index) => index),
+      );
+    }
+  });
+
+  function playerSeat(
+    seats: JerkCheck['seats'],
+    events: readonly GameEvent[],
+    index: number,
+  ): ShownSeat {
+    const seat = feltOf(seats, events).seats[index];
+    if (seat === undefined) throw new Error(`no seat ${index} on the folded felt`);
+    return seat;
+  }
+
+  /** Exactly what `Showdown` does, so the tests cannot fold differently. */
+  function feltOf(seats: JerkCheck['seats'], events: readonly GameEvent[]): ShownTable {
+    return showEvents(openTable(seats), untilSwept(events));
+  }
+
+  function handsNet(seat: ShownSeat): number {
+    return seat.hands.reduce((sum, hand) => sum + (hand.net ?? 0), 0);
+  }
+
+  function cardsOf(seat: ShownSeat): string {
+    return seat.hands.map((hand) => hand.cards.map((card) => card.rank).join('')).join('|');
   }
 });
